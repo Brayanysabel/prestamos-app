@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrestamosApp - Sistema de Gestión de Préstamos</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Aplicación web moderna y minimalista para simular, otorgar, gestionar y cobrar préstamos.">
+  <link rel="stylesheet" href="style.css">
+  <!-- Soporte para PWA e iOS -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/icon-192.svg">
+  
+  <!-- Fuente e Íconos -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div id="offline-banner" style="display: none; background-color: var(--danger); color: white; text-align: center; padding: 0.5rem; font-size: 0.85rem; font-weight: bold; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;">
+    <i data-lucide="wifi-off" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i>
+    Sin conexión a internet. La aplicación puede no funcionar correctamente.
+  </div>
+
+  <!-- ================= LOGIN SCREEN ================= -->
+  <div id="login-screen" class="login-overlay active">
+    <div class="login-container">
+      <div class="login-header">
+        <div class="brand-icon mx-auto mb-2" id="login-brand-icon" style="margin: 0 auto 1rem auto; display: flex; max-width: 80px;">
+          <i data-lucide="wallet-cards"></i>
+        </div>
+        <h2 id="login-brand-name">Bienvenido a PrestamosApp</h2>
+        <p>Inicia sesión para gestionar tus préstamos</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group mb-4">
+          <label for="login-username">Usuario</label>
+          <input type="text" id="login-username" placeholder="Ej. admin" required>
+        </div>
+        <div class="form-group mb-4">
+          <label for="login-password">Contraseña</label>
+          <input type="password" id="login-password" placeholder="••••••••" required>
+        </div>
+        <div id="login-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%;">
+          <i data-lucide="log-in"></i> Iniciar Sesión
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div id="app-wrapper" class="app-container d-none">
+    
+    <!-- BARRA LATERAL DE NAVEGACIÓN -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon" id="sidebar-brand-icon" style="max-width: 40px;">
+          <i data-lucide="wallet-cards"></i>
+        </div>
+        <span class="brand-name" id="sidebar-brand-name">PrestamosApp</span>
+      </div>
+      
+      <nav class="nav-menu">
+        <li>
+          <a class="nav-link active" data-target="dashboard">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Dashboard</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-target="calculator">
+            <i data-lucide="calculator"></i>
+            <span>Calculadora</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-target="clients">
+            <i data-lucide="users"></i>
+            <span>Clientes</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-target="loans">
+            <i data-lucide="hand-coins"></i>
+            <span>Préstamos</span>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link" data-target="settings">
+            <i data-lucide="settings"></i>
+            <span>Configuración</span>
+          </a>
+        </li>
+        <li style="margin-top: 1rem;">
+          <button id="install-app-btn" class="btn btn-primary" style="width: 100%; display: none; padding: 0.5rem;">
+            <i data-lucide="download"></i> Instalar App
+          </button>
+        </li>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <button id="theme-toggle-btn" class="btn btn-secondary btn-sm" style="width: 100%; display: flex; justify-content: center; gap: 0.5rem;">
+          <i data-lucide="sun" id="theme-icon"></i>
+          <span id="theme-text">Modo Oscuro</span>
+        </button>
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">
+          v1.0.0 &bull; Local-First
+        </div>
+      </div>
+    </aside>
+    
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="main-content">
+      
+      <!-- CABECERA SUPERIOR -->
+      <header class="top-header">
+        <div class="page-title">
+          <h1 id="section-title">Dashboard</h1>
+          <p id="section-subtitle">Vista general del estado de tus préstamos.</p>
+        </div>
+        <div class="header-actions">
+          <button id="quick-loan-btn" class="btn btn-primary">
+            <i data-lucide="plus"></i> Nuevo Préstamo
+          </button>
+        </div>
+      </header>
+      
+      <!-- ================= PESTAÑA: DASHBOARD ================= -->
+      <section id="sec-dashboard" class="app-section active">
+        <!-- KPI Grid -->
+        <div class="kpi-grid">
+          <div class="card kpi-card">
+            <div class="kpi-icon primary">
+              <i data-lucide="badge-dollar-sign"></i>
+            </div>
+            <div class="kpi-info">
+              <span class="kpi-label">Capital Lentido</span>
+              <span class="kpi-value" id="kpi-capital">$0.00</span>
+            </div>
+          </div>
+          <div class="card kpi-card">
+            <div class="kpi-icon success">
+              <i data-lucide="trending-up"></i>
+            </div>
+            <div class="kpi-info">
+              <span class="kpi-label">Intereses Proyectados</span>
+              <span class="kpi-value" id="kpi-interests">$0.00</span>
+            </div>
+          </div>
+          <div class="card kpi-card">
+            <div class="kpi-icon warning">
+              <i data-lucide="piggy-bank"></i>
+            </div>
+            <div class="kpi-info">
+              <span class="kpi-label">Total Recaudado</span>
+              <span class="kpi-value" id="kpi-collected">$0.00</span>
+            </div>
+          </div>
+          <div class="card kpi-card">
+            <div class="kpi-icon danger">
+              <i data-lucide="hand-helping"></i>
+            </div>
+            <div class="kpi-info">
+              <span class="kpi-label">Saldo Pendiente</span>
+              <span class="kpi-value" id="kpi-balance">$0.00</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Gráficos -->
+        <div class="dashboard-charts">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Historial de Recaudaciones</span>
+              <span class="card-subtitle">Capital vs. Intereses cobrados por mes</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="collectionsChart"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Estado de Préstamos</span>
+              <span class="card-subtitle">Distribución porcentual</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="statusChart"></canvas>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Actividad Reciente -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Últimos Pagos Registrados</span>
+            <span class="card-subtitle">Actividad de cobranza reciente</span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Préstamo ID</th>
+                  <th>Cuota Nº</th>
+                  <th class="text-right">Monto</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-recent-payments">
+                <tr>
+                  <td colspan="6" style="text-align: center; color: var(--text-muted);">No hay transacciones registradas.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ================= PESTAÑA: CALCULADORA ================= -->
+      <section id="sec-calculator" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Simulador de Crédito</span>
+            <span class="card-subtitle">Calcula cuotas y genera tablas de amortización.</span>
+          </div>
+          <form id="calculator-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="calc-client">Cliente (Opcional)</label>
+                <select id="calc-client" required>
+                  <option value="">-- Seleccionar Cliente --</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="calc-amount">Monto del Préstamo ($)</label>
+                <input type="number" id="calc-amount" placeholder="Ej. 1000" min="10" step="any" required>
+              </div>
+              <div class="form-group">
+                <label for="calc-rate">Tasa de Interés (% Anual)</label>
+                <input type="number" id="calc-rate" placeholder="Ej. 12" min="0" max="100" step="any" required>
+              </div>
+              <div class="form-group">
+                <label for="calc-term">Plazo (Número de Cuotas)</label>
+                <input type="number" id="calc-term" placeholder="Ej. 12" min="1" step="1" required>
+              </div>
+              <div class="form-group">
+                <label for="calc-frequency">Frecuencia de Pago</label>
+                <select id="calc-frequency" required>
+                  <option value="monthly" selected>Mensual</option>
+                  <option value="biweekly">Quincenal</option>
+                  <option value="weekly">Semanal</option>
+                  <option value="daily">Diario</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="calc-type">Sistema de Interés</label>
+                <select id="calc-type" required>
+                  <option value="french" selected>Amortización Francesa (Cuota Fija)</option>
+                  <option value="simple">Interés Simple (Cuotas Iguales)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="calc-date">Fecha de Inicio</label>
+                <input type="date" id="calc-date" required>
+              </div>
+            </div>
+            
+            <div class="flex gap-4">
+              <button type="submit" class="btn btn-primary" style="flex-grow: 1;">
+                <i data-lucide="calculator"></i> Calcular Amortización
+              </button>
+              <button type="button" id="calc-grant-btn" class="btn btn-secondary" style="flex-grow: 1;" disabled>
+                <i data-lucide="check-circle-2"></i> Otorgar Préstamo
+              </button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- Tabla de Amortización Generada -->
+        <div class="card d-none" id="calc-result-card">
+          <div class="card-header justify-between align-center">
+            <div>
+              <span class="card-title">Tabla de Amortización Proyectada</span>
+              <span class="card-subtitle" id="calc-summary-text">Resumen de cuotas calculadas</span>
+            </div>
+            <div class="badge badge-primary" id="calc-total-payable" style="font-family: var(--font-mono); font-size: 0.9rem; padding: 0.5rem 1rem;">
+              Total a Pagar: $0.00
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nº</th>
+                  <th>Fecha de Vencimiento</th>
+                  <th class="text-right">Cuota Fija</th>
+                  <th class="text-right">Capital</th>
+                  <th class="text-right">Interés</th>
+                  <th class="text-right">Saldo Restante</th>
+                </tr>
+              </thead>
+              <tbody id="calc-amortization-table">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ================= PESTAÑA: CLIENTES ================= -->
+      <section id="sec-clients" class="app-section">
+        <div class="search-bar">
+          <input type="text" id="client-search" class="search-input" placeholder="Buscar cliente por nombre o teléfono...">
+          <button id="add-client-btn" class="btn btn-primary">
+            <i data-lucide="user-plus"></i> Registrar Cliente
+          </button>
+        </div>
+        
+        <div class="card">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Teléfono</th>
+                  <th>Correo Electrónico</th>
+                  <th>Préstamos Totales</th>
+                  <th class="text-right">Monto Deuda Activa</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="clients-table-body">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ================= PESTAÑA: PRÉSTAMOS ================= -->
+      <section id="sec-loans" class="app-section">
+        <div class="card" style="padding: 1rem; margin-bottom: 1.25rem;">
+          <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;">
+            <div style="flex-grow: 1; display: flex; gap: 0.75rem;">
+              <input type="text" id="loan-search" placeholder="Buscar por cliente o ID de préstamo..." style="flex-grow: 1;">
+              <select id="loan-status-filter">
+                <option value="all">Todos los Estados</option>
+                <option value="active">Activos</option>
+                <option value="paid">Pagados</option>
+                <option value="overdue">Vencidos</option>
+              </select>
+            </div>
+            <button id="new-loan-shortcut-btn" class="btn btn-primary">
+              <i data-lucide="plus-circle"></i> Nuevo Préstamo
+            </button>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Cliente</th>
+                  <th>Monto</th>
+                  <th>Interés</th>
+                  <th>Saldo Pendiente</th>
+                  <th>Próxima Cuota</th>
+                  <th>Estado</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="loans-table-body">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      
+      <!-- ================= PESTAÑA: AJUSTES ================= -->
+      <section id="sec-settings" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Preferencias de Interfaz</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0;">
+            <div>
+              <strong>Tema de la Aplicación</strong>
+              <p style="color: var(--text-muted); font-size: 0.85rem;">Alterna entre los temas claro y oscuro.</p>
+            </div>
+            <button id="settings-theme-btn" class="btn btn-secondary">
+              <i data-lucide="moon"></i> Tema Oscuro
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Personalización de Marca</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Cambia el nombre y el logotipo de tu empresa. El logo se recomienda en formato cuadrado (JPG o PNG).
+          </p>
+          <form id="brand-customization-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="company-name-input">Nombre de la Compañía</label>
+                <input type="text" id="company-name-input" placeholder="Ej. Mi Financiera">
+              </div>
+              <div class="form-group">
+                <label for="company-logo-input">Subir Logotipo (Imagen)</label>
+                <input type="file" id="company-logo-input" accept="image/png, image/jpeg, image/svg+xml">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="company-phone-input">Teléfono de la Empresa</label>
+                <input type="text" id="company-phone-input" placeholder="Ej. +1 809-555-0000">
+              </div>
+              <div class="form-group">
+                <label for="company-address-input">Dirección</label>
+                <input type="text" id="company-address-input" placeholder="Ej. Av. Principal #123">
+              </div>
+            </div>
+            <div id="brand-customization-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+            <button type="submit" class="btn btn-primary">Guardar Marca</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Ajustes Financieros y Regionales</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Configura el símbolo de moneda y la tasa de interés por defecto para nuevos préstamos.
+          </p>
+          <form id="financial-settings-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="currency-symbol-input">Símbolo de Moneda</label>
+                <input type="text" id="currency-symbol-input" placeholder="Ej. RD$, $, €, MXN">
+              </div>
+              <div class="form-group">
+                <label for="default-interest-input">Tasa de Interés por Defecto (%)</label>
+                <input type="number" step="0.1" id="default-interest-input" placeholder="Ej. 10">
+              </div>
+            </div>
+            <div id="financial-settings-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+            <button type="submit" class="btn btn-primary">Guardar Ajustes Financieros</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Copias de Seguridad (Backup)</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Descarga un archivo con toda tu base de datos a tu dispositivo, o envíatelo por correo (requiere cuenta de Gmail).
+          </p>
+          <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
+            <button type="button" class="btn btn-secondary" id="download-backup-btn">
+              <i data-lucide="download-cloud"></i> Descargar Copia Local (.db)
+            </button>
+            <div id="download-backup-msg" style="font-size: 0.85rem; margin-top: 0.5rem; font-weight: 500;"></div>
+          </div>
+
+          <form id="email-backup-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="smtp-user">Correo Remitente (Gmail)</label>
+                <input type="email" id="smtp-user" placeholder="tu-correo@gmail.com" required>
+              </div>
+              <div class="form-group">
+                <label for="smtp-pass">Contraseña de Aplicación</label>
+                <input type="password" id="smtp-pass" placeholder="abcd efgh ijkl mnop" required>
+              </div>
+            </div>
+            <div class="form-group mb-4">
+              <label for="backup-email">Correo Destino (donde recibirás el archivo)</label>
+              <input type="email" id="backup-email" placeholder="correo-destino@ejemplo.com" required>
+            </div>
+            <div id="email-backup-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+            <button type="submit" class="btn btn-primary">
+              <i data-lucide="mail"></i> Enviar Respaldo
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Seguridad de la Cuenta</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Actualiza tu usuario y contraseña de acceso. Una vez guardados los cambios, deberás iniciar sesión nuevamente.
+          </p>
+          <form id="change-credentials-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="new-username">Nuevo Usuario</label>
+                <input type="text" id="new-username" required>
+              </div>
+              <div class="form-group">
+                <label for="new-password">Nueva Contraseña</label>
+                <input type="password" id="new-password" required>
+              </div>
+            </div>
+            <div style="margin-bottom: 1rem;" class="form-group">
+              <label for="confirm-password">Confirmar Contraseña</label>
+              <input type="password" id="confirm-password" required style="max-width: 50%;">
+            </div>
+            <div id="change-credentials-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger);"></div>
+            <button type="submit" class="btn btn-primary">Guardar Credenciales</button>
+          </form>
+        </div>
+
+        <div class="card" style="border: 1px solid var(--danger);">
+          <div class="card-header">
+            <span class="card-title text-danger">Exportación y Limpieza (Control Total)</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Exporta tus datos o reinicia la aplicación borrando todos los registros de préstamos y clientes.
+          </p>
+          
+          <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+            <button type="button" class="btn btn-secondary" id="export-clients-btn">
+              <i data-lucide="download"></i> Exportar Clientes (CSV)
+            </button>
+            <button type="button" class="btn btn-secondary" id="export-loans-btn">
+              <i data-lucide="download"></i> Exportar Préstamos (CSV)
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Gestión de Datos (Respaldo)</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Exporta tus datos localmente en formato JSON o importa un archivo de respaldo guardado previamente para restaurar tu estado.
+          </p>
+          <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button id="settings-export-btn" class="btn btn-secondary">
+              <i data-lucide="download"></i> Exportar Datos (JSON)
+            </button>
+            <button id="settings-import-btn" class="btn btn-secondary">
+              <i data-lucide="upload"></i> Importar Respaldo
+            </button>
+            <input type="file" id="import-file-input" class="d-none" accept=".json">
+            <button id="settings-seed-btn" class="btn btn-secondary" style="border-color: var(--warning);">
+              <i data-lucide="database-backup"></i> Cargar Datos de Prueba
+            </button>
+            <button id="settings-clear-btn" class="btn btn-danger">
+              <i data-lucide="trash-2"></i> Borrar Todo
+            </button>
+          </div>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+  
+  <!-- ================= MODAL: REGISTRAR CLIENTE ================= -->
+  <div id="modal-client" class="modal-overlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 class="card-title" id="client-modal-title">Registrar Nuevo Cliente</h2>
+        <button class="close-btn" onclick="closeModal('modal-client')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form id="client-form">
+        <div class="modal-body">
+          <div class="form-group mb-4">
+            <label for="client-name">Nombre Completo</label>
+            <input type="text" id="client-name" placeholder="Ej. Juan Pérez" required>
+          </div>
+          <div class="form-group mb-4">
+            <label for="client-phone">Teléfono de Contacto</label>
+            <input type="tel" id="client-phone" placeholder="Ej. +1 809-555-0123" required>
+          </div>
+          <div class="form-group mb-4">
+            <label for="client-email">Correo Electrónico</label>
+            <input type="email" id="client-email" placeholder="Ej. juan.perez@email.com" required>
+          </div>
+          <div class="form-group">
+            <label for="client-notes">Notas / Dirección (Opcional)</label>
+            <textarea id="client-notes" placeholder="Dirección, referencias, límite crediticio sugerido..." rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-client')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <!-- ================= MODAL: DETALLE DEL CLIENTE ================= -->
+  <div id="modal-client-detail" class="modal-overlay">
+    <div class="modal-container" style="max-width: 800px;">
+      <div class="modal-header">
+        <h2 class="card-title">Perfil del Cliente</h2>
+        <button class="close-btn" onclick="closeModal('modal-client-detail')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Nombre</span>
+            <span class="detail-value" id="client-detail-name">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Teléfono</span>
+            <span class="detail-value" id="client-detail-phone">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Email</span>
+            <span class="detail-value" id="client-detail-email">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Deuda Activa</span>
+            <span class="detail-value mono" id="client-detail-debt">$0.00</span>
+          </div>
+        </div>
+        
+        <div class="mb-4">
+          <strong>Notas:</strong>
+          <p id="client-detail-notes" style="color: var(--text-muted); font-size: 0.9rem; padding: 0.5rem; background-color: var(--bg); border-radius: var(--radius-sm); margin-top: 0.25rem;">Ninguna.</p>
+        </div>
+        
+        <div>
+          <strong class="mb-4" style="display: block;">Historial de Préstamos</strong>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Monto</th>
+                  <th>Interés</th>
+                  <th>Saldo Pendiente</th>
+                  <th>Estado</th>
+                  <th class="text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="client-detail-loans-list">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between;">
+        <button type="button" class="btn btn-danger" id="delete-client-btn">
+          <i data-lucide="trash-2"></i> Eliminar Cliente
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-client-detail')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: DETALLE DEL PRÉSTAMO ================= -->
+  <div id="modal-loan-detail" class="modal-overlay">
+    <div class="modal-container" style="max-width: 800px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <h2 class="card-title">Detalle de Préstamo</h2>
+          <span class="badge badge-primary" id="loan-detail-id" style="font-family: var(--font-mono);">-</span>
+        </div>
+        <button class="close-btn" onclick="closeModal('modal-loan-detail')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Cliente</span>
+            <span class="detail-value" id="loan-detail-client">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Fecha Inicio</span>
+            <span class="detail-value" id="loan-detail-date">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Sistema</span>
+            <span class="detail-value" id="loan-detail-type">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Frecuencia</span>
+            <span class="detail-value" id="loan-detail-frequency">-</span>
+          </div>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Monto Solicitado</span>
+            <span class="detail-value mono" id="loan-detail-amount">$0.00</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Interés Proyectado</span>
+            <span class="detail-value mono" id="loan-detail-interest-amount">$0.00</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Total Cobrado</span>
+            <span class="detail-value mono" id="loan-detail-paid-amount">$0.00</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Saldo Restante</span>
+            <span class="detail-value mono" id="loan-detail-remaining-amount" style="font-weight: 700; color: var(--primary);">$0.00</span>
+          </div>
+        </div>
+        
+        <div class="mt-4">
+          <div class="flex justify-between align-center mb-4">
+            <strong>Cronograma de Pagos</strong>
+            <span class="badge" id="loan-detail-status-badge">Activo</span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nº</th>
+                  <th>Vencimiento</th>
+                  <th class="text-right">Cuota Fija</th>
+                  <th class="text-right">Capital</th>
+                  <th class="text-right">Interés</th>
+                  <th class="text-right">Abonado</th>
+                  <th>Estado</th>
+                  <th class="text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="loan-detail-payments-table">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between;">
+        <button type="button" class="btn btn-danger" id="delete-loan-btn">
+          <i data-lucide="trash-2"></i> Eliminar Préstamo
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: REGISTRAR ABONO/PAGO ================= -->
+  <div id="modal-pay-cuota" class="modal-overlay">
+    <div class="modal-container" style="max-width: 450px;">
+      <div class="modal-header">
+        <h2 class="card-title">Registrar Cobro</h2>
+        <button class="close-btn" onclick="closeModal('modal-pay-cuota')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form id="pay-cuota-form">
+        <div class="modal-body">
+          <input type="hidden" id="pay-loan-id">
+          <input type="hidden" id="pay-cuota-index">
+          
+          <div class="card" style="padding: 1rem; margin-bottom: 1rem; background-color: var(--bg);">
+            <div style="font-size: 0.85rem; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <span>Cliente:</span> <strong id="pay-client-name" style="color: var(--text);">Juan Pérez</strong>
+              <span>Cuota Nº:</span> <strong id="pay-cuota-num" style="color: var(--text);">Cuota 1</strong>
+              <span>Valor Sugerido:</span> <strong id="pay-suggested-amount" style="color: var(--text); font-family: var(--font-mono);">$0.00</strong>
+              <span>Abonado Previo:</span> <strong id="pay-previous-paid" style="color: var(--text); font-family: var(--font-mono);">$0.00</strong>
+              <span>Saldo Pendiente:</span> <strong id="pay-remaining-amount" style="color: var(--text); font-family: var(--font-mono);">$0.00</strong>
+            </div>
+          </div>
+          
+          <div class="form-group mb-4">
+            <label for="pay-amount-input">Monto a Cobrar ($)</label>
+            <input type="number" id="pay-amount-input" step="any" min="0.01" required>
+          </div>
+          <div class="form-group">
+            <label for="pay-date-input">Fecha del Pago</label>
+            <input type="date" id="pay-date-input" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-pay-cuota')">Cancelar</button>
+          <button type="submit" class="btn btn-success">Registrar Pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Importar JS -->
+  <!-- ================= MODAL: AUTORIZACIÓN PARA BORRAR ================= -->
+  <div id="modal-delete-auth" class="modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2 class="card-title text-danger">Atención</h2>
+        <button class="close-btn" onclick="closeModal('modal-delete-auth')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form id="delete-auth-form">
+        <div class="modal-body">
+          <p id="delete-auth-warning-text" style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem;">
+            Esta acción borrará permanentemente este registro y todos sus datos asociados. Ingrese su contraseña de administrador para confirmar.
+          </p>
+          <input type="hidden" id="delete-target-type" value="loan">
+          <input type="hidden" id="delete-target-id">
+          <div class="form-group mb-4">
+            <label for="delete-auth-password">Contraseña</label>
+            <input type="password" id="delete-auth-password" required>
+          </div>
+          <div id="delete-auth-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-auth')">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar Definitivamente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONFIGURACIÓN PARA PLAY STORE / NUBE -->
+  <script>
+    // Si subes esta app a la Play Store, debes poner aquí la URL de tu servidor en la nube.
+    // Ejemplo: window.PRESTAMOS_API_URL = 'https://mi-backend-prestamos.onrender.com/api';
+    // Si lo dejas en blanco, asumirá que está ejecutándose en modo local.
+    window.PRESTAMOS_API_URL = '';
+  </script>
+  
+  <script src="app.js"></script>
+
+  <!-- Registro del Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
+          console.log('ServiceWorker registrado con éxito: ', registration.scope);
+        }).catch(err => {
+          console.log('Registro de ServiceWorker falló: ', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
