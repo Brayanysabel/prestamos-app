@@ -1460,31 +1460,44 @@ if (emailBackupForm) {
 
 // --- INSTALACIÓN DE LA PWA ---
 let deferredPrompt;
-const installAppBtn = document.getElementById('install-app-btn');
+const installAppBtns = document.querySelectorAll('#install-app-btn, #top-install-btn, #login-install-btn');
+const loginInstallContainer = document.getElementById('login-install-container');
+
+// Detectar si ya está instalada o es standalone
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+if (isStandalone) {
+  installAppBtns.forEach(btn => btn.style.display = 'none');
+  if (loginInstallContainer) loginInstallContainer.style.display = 'none';
+}
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  // Previene que Chrome 67 y anteriores muestren automáticamente el prompt
   e.preventDefault();
-  // Guarda el evento para poder dispararlo después.
   deferredPrompt = e;
-  // Muestra el botón de instalación
-  if (installAppBtn) installAppBtn.style.display = 'flex';
 });
 
-if (installAppBtn) {
-  installAppBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    // Oculta nuestro botón proporcionado por la interfaz de usuario
-    installAppBtn.style.display = 'none';
-    // Muestra el prompt de instalación
+installAppBtns.forEach(btn => {
+  btn.addEventListener('click', async () => {
+    // Es iOS Safari (no soporta beforeinstallprompt)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS && !isStandalone) {
+      alert("Para instalar en iPhone/iPad:\n\n1. Toca el ícono 'Compartir' (cuadrado con flecha) en la parte inferior de Safari.\n2. Selecciona 'Añadir a la pantalla de inicio'.\n3. Confirma tocando 'Añadir'.");
+      return;
+    }
+
+    if (!deferredPrompt) {
+      alert("Para instalar en Android:\n\nToca los 3 puntos del menú de Chrome (arriba a la derecha) y selecciona 'Añadir a la pantalla de inicio' o 'Instalar aplicación'.");
+      return;
+    }
+    
     deferredPrompt.prompt();
-    // Espera a que el usuario responda al prompt
     const { outcome } = await deferredPrompt.userChoice;
     console.log(`User response to the install prompt: ${outcome}`);
-    // No podemos volver a usar el prompt, lo descartamos
+    if (outcome === 'accepted') {
+      installAppBtns.forEach(b => b.style.display = 'none');
+    }
     deferredPrompt = null;
   });
-}
+});
 
 // window.addEventListener('appinstalled', () => {
 //   // Limpia el deferredPrompt para el garbage collection
@@ -1766,23 +1779,3 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inicializar Lucide Icons
   lucide.createIcons();
 });
-
-// Manejo de estado de red (Online / Offline)
-function updateOnlineStatus() {
-  const banner = document.getElementById('offline-banner');
-  if (banner) {
-    if (navigator.onLine) {
-      banner.style.display = 'none';
-      document.body.style.paddingTop = '0';
-    } else {
-      banner.style.display = 'block';
-      document.body.style.paddingTop = '30px'; // Espacio para el banner
-    }
-  }
-}
-
-window.addEventListener('online', updateOnlineStatus);
-window.addEventListener('offline', updateOnlineStatus);
-// Chequear estado inicial
-updateOnlineStatus();
-
