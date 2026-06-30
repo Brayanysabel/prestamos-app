@@ -582,7 +582,8 @@ const sectionMeta = {
   calculator: { title: 'Calculadora de Préstamos', subtitle: 'Simula créditos y proyecta tablas de amortización.' },
   clients: { title: 'Gestión de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
   loans: { title: 'Préstamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
-  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' }
+  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' },
+  superadmin: { title: 'Administración Global', subtitle: 'Panel de control de tu negocio SaaS.' }
 };
 
 function switchSection(targetSectionId) {
@@ -606,6 +607,16 @@ function switchSection(targetSectionId) {
   if (meta) {
     sectionTitle.textContent = meta.title;
     sectionSubtitle.textContent = meta.subtitle;
+  }
+
+  // Ocultar acciones si es superadmin
+  const headerActions = document.querySelector('.header-actions');
+  if (headerActions) {
+    if (targetSectionId === 'superadmin') {
+      headerActions.style.display = 'none';
+    } else {
+      headerActions.style.display = 'flex';
+    }
   }
   
   // Actualizar datos de la sección específica
@@ -2035,8 +2046,30 @@ async function loadSaasCompanies() {
     const tbody = document.getElementById('saas-companies-table');
     tbody.innerHTML = '';
     
+    let totalActivas = 0;
+    let totalSuspendidas = 0;
+    let ingresosProyectados = 0;
+    
+    const precios = {
+      'principiante': 900,
+      'basico': 1500,
+      'intermedio': 2000,
+      'premium': 2500
+    };
+
     companies.forEach(c => {
       const isSuspended = c.status === 'suspended';
+      
+      // Calcular KPIs
+      if (!isSuspended) {
+        totalActivas++;
+        if (precios[c.plan]) {
+          ingresosProyectados += precios[c.plan];
+        }
+      } else {
+        totalSuspendidas++;
+      }
+
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${c.name}</strong></td>
@@ -2059,6 +2092,12 @@ async function loadSaasCompanies() {
       `;
       tbody.appendChild(tr);
     });
+    
+    // Actualizar DOM de KPIs
+    document.getElementById('saas-kpi-total').textContent = companies.length;
+    document.getElementById('saas-kpi-active').textContent = totalActivas;
+    document.getElementById('saas-kpi-suspended').textContent = totalSuspendidas;
+    document.getElementById('saas-kpi-income').textContent = formatCurrency(ingresosProyectados);
     
     lucide.createIcons();
   } catch(e) {
