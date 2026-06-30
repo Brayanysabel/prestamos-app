@@ -153,6 +153,18 @@ db.exec(initSql, async err => {
           }
         );
       } else {
+        // Migration: Ensure legacy users have a companyId
+        const defaultCompanyId = 'comp_default';
+        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
+            db.run("UPDATE users SET companyId = ? WHERE companyId IS NULL OR companyId NOT IN (SELECT id FROM companies)", [defaultCompanyId], function(err) {
+              if (!err && this.changes > 0) {
+                console.log(`Migrated ${this.changes} legacy users to default company.`);
+              }
+            });
+          }
+        );
+
         // Migration: If any password does NOT start with '$2b$' (bcrypt signature), update it to 'admin' hashed
         db.run("UPDATE users SET password = ? WHERE password NOT LIKE '$2b$%'", [defaultHash], function(err) {
           if (!err && this.changes > 0) {
