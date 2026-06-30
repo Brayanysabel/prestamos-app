@@ -2157,34 +2157,6 @@ function openSaasPlanModal() {
   document.getElementById('modal-saas-plan').classList.add('active');
 }
 
-document.getElementById('saas-plan-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const payload = {
-    id: document.getElementById('saas-plan-id').value.toLowerCase().replace(/\\s+/g, ''),
-    name: document.getElementById('saas-plan-name').value,
-    price: parseFloat(document.getElementById('saas-plan-price').value),
-    max_users: parseInt(document.getElementById('saas-plan-users').value, 10),
-    max_loans: parseInt(document.getElementById('saas-plan-loans').value, 10)
-  };
-  
-  const btn = e.target.querySelector('button[type="submit"]');
-  const errorEl = document.getElementById('saas-plan-error');
-  try {
-    btn.disabled = true;
-    await apiRequest('/saas/plans', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    closeModal('modal-saas-plan');
-    await loadSaasPlans();
-    lucide.createIcons();
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-  }
-});
 
 async function deleteSaasPlan(id) {
   if (!confirm(`¿Estás seguro de eliminar el plan "${id}"?`)) return;
@@ -2210,29 +2182,6 @@ function openSaasEditCompany(companyId, companyName, currentPlan) {
   document.getElementById('modal-saas-edit-company').classList.add('active');
 }
 
-document.getElementById('saas-edit-company-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const companyId = document.getElementById('saas-edit-company-id').value;
-  const plan = document.getElementById('saas-edit-company-plan').value;
-  
-  const btn = e.target.querySelector('button[type="submit"]');
-  const errorEl = document.getElementById('saas-edit-company-error');
-  try {
-    btn.disabled = true;
-    await apiRequest(`/saas/companies/${companyId}/plan`, {
-      method: 'PUT',
-      body: JSON.stringify({ plan })
-    });
-    closeModal('modal-saas-edit-company');
-    await loadSaasCompanies();
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
 function openSaasDeleteCompany(companyId) {
   if (companyId === 'comp_default') {
     alert('No puedes eliminar la empresa principal.');
@@ -2241,25 +2190,6 @@ function openSaasDeleteCompany(companyId) {
   document.getElementById('saas-delete-company-id').value = companyId;
   document.getElementById('modal-saas-delete-company').classList.add('active');
 }
-
-document.getElementById('saas-delete-company-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const companyId = document.getElementById('saas-delete-company-id').value;
-  
-  const btn = e.target.querySelector('button[type="submit"]');
-  try {
-    btn.disabled = true;
-    await apiRequest(`/saas/companies/${companyId}`, {
-      method: 'DELETE'
-    });
-    closeModal('modal-saas-delete-company');
-    await loadSaasCompanies();
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    btn.disabled = false;
-  }
-});
 
 function openSaasPayModal(companyId, companyName) {
   document.getElementById('saas-pay-company-id').value = companyId;
@@ -2271,37 +2201,9 @@ function openSaasPayModal(companyId, companyName) {
   document.getElementById('modal-saas-pay').classList.add('active');
 }
 
-document.getElementById('saas-pay-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const companyId = document.getElementById('saas-pay-company-id').value;
-  const amount = parseFloat(document.getElementById('saas-pay-amount').value);
-  const months = parseInt(document.getElementById('saas-pay-months').value, 10);
-  const notes = document.getElementById('saas-pay-notes').value;
-  
-  const btn = e.target.querySelector('button[type="submit"]');
-  const errorEl = document.getElementById('saas-pay-error');
-  
-  try {
-    btn.disabled = true;
-    errorEl.classList.add('d-none');
-    
-    await apiRequest('/saas/payments', {
-      method: 'POST',
-      body: JSON.stringify({ targetCompanyId: companyId, amount, months, notes })
-    });
-    
-    closeModal('modal-saas-pay');
-    await loadSaasCompanies();
-  } catch(err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
 async function toggleSaasStatus(companyId, newStatus) {
-  if (!confirm(`¿Estás seguro de que deseas marcar esta empresa como ${newStatus === 'active' ? 'ACTIVA' : 'SUSPENDIDA'}?`)) return;
+  const label = newStatus === 'active' ? 'ACTIVA' : 'SUSPENDIDA';
+  if (!confirm(`¿Estás seguro de que deseas marcar esta empresa como ${label}?`)) return;
   
   try {
     await apiRequest(`/saas/companies/${companyId}/status`, {
@@ -2313,3 +2215,111 @@ async function toggleSaasStatus(companyId, newStatus) {
     alert('Error actualizando estado: ' + err.message);
   }
 }
+
+// Registrar todos los eventos de los formularios SaaS de forma segura
+document.addEventListener('DOMContentLoaded', () => {
+  const saasPayForm = document.getElementById('saas-pay-form');
+  if (saasPayForm) {
+    saasPayForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const companyId = document.getElementById('saas-pay-company-id').value;
+      const amount = parseFloat(document.getElementById('saas-pay-amount').value);
+      const months = parseInt(document.getElementById('saas-pay-months').value, 10);
+      const notes = document.getElementById('saas-pay-notes').value;
+      const btn = e.target.querySelector('button[type="submit"]');
+      const errorEl = document.getElementById('saas-pay-error');
+      try {
+        btn.disabled = true;
+        errorEl.classList.add('d-none');
+        await apiRequest('/saas/payments', {
+          method: 'POST',
+          body: JSON.stringify({ targetCompanyId: companyId, amount, months, notes })
+        });
+        closeModal('modal-saas-pay');
+        await loadSaasCompanies();
+      } catch(err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  const saasPlanForm = document.getElementById('saas-plan-form');
+  if (saasPlanForm) {
+    saasPlanForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        id: document.getElementById('saas-plan-id').value.toLowerCase().replace(/\s+/g, ''),
+        name: document.getElementById('saas-plan-name').value,
+        price: parseFloat(document.getElementById('saas-plan-price').value),
+        max_users: parseInt(document.getElementById('saas-plan-users').value, 10),
+        max_loans: parseInt(document.getElementById('saas-plan-loans').value, 10)
+      };
+      const btn = e.target.querySelector('button[type="submit"]');
+      const errorEl = document.getElementById('saas-plan-error');
+      try {
+        btn.disabled = true;
+        await apiRequest('/saas/plans', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        closeModal('modal-saas-plan');
+        await loadSaasPlans();
+        lucide.createIcons();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  const saasEditCompanyForm = document.getElementById('saas-edit-company-form');
+  if (saasEditCompanyForm) {
+    saasEditCompanyForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const companyId = document.getElementById('saas-edit-company-id').value;
+      const plan = document.getElementById('saas-edit-company-plan').value;
+      const btn = e.target.querySelector('button[type="submit"]');
+      const errorEl = document.getElementById('saas-edit-company-error');
+      try {
+        btn.disabled = true;
+        await apiRequest(`/saas/companies/${companyId}/plan`, {
+          method: 'PUT',
+          body: JSON.stringify({ plan })
+        });
+        closeModal('modal-saas-edit-company');
+        await loadSaasCompanies();
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  const saasDeleteCompanyForm = document.getElementById('saas-delete-company-form');
+  if (saasDeleteCompanyForm) {
+    saasDeleteCompanyForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const companyId = document.getElementById('saas-delete-company-id').value;
+      const btn = e.target.querySelector('button[type="submit"]');
+      try {
+        btn.disabled = true;
+        await apiRequest(`/saas/companies/${companyId}`, {
+          method: 'DELETE'
+        });
+        closeModal('modal-saas-delete-company');
+        await loadSaasCompanies();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+});
