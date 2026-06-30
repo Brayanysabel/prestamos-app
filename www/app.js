@@ -1720,6 +1720,38 @@ if (brandForm) {
   });
 }
 
+// Update Plan Limit Widget
+function updatePlanWidget() {
+  const userInfo = getUserInfo();
+  if (!userInfo) return;
+  
+  const limits = {
+    'principiante': { name: 'Principiante', limit: 100 },
+    'basico': { name: 'Básico', limit: 500 },
+    'intermedio': { name: 'Intermedio', limit: 1000 },
+    'premium': { name: 'Premium 💎', limit: 100000 }
+  };
+  
+  const plan = limits[userInfo.plan] || limits['basico'];
+  const usage = state.loans.length;
+  
+  document.getElementById('current-plan-name').textContent = plan.name;
+  document.getElementById('current-plan-usage').textContent = usage;
+  document.getElementById('current-plan-limit').textContent = plan.limit === 100000 ? 'Ilimitado' : plan.limit;
+  
+  const percent = plan.limit === 100000 ? 0 : Math.min((usage / plan.limit) * 100, 100);
+  const progressEl = document.getElementById('current-plan-progress');
+  progressEl.style.width = percent + '%';
+  
+  if (percent >= 100) {
+    progressEl.style.backgroundColor = 'var(--danger)';
+  } else if (percent >= 80) {
+    progressEl.style.backgroundColor = 'var(--warning)';
+  } else {
+    progressEl.style.backgroundColor = 'var(--primary)';
+  }
+}
+
 const finForm = document.getElementById('financial-settings-form');
 if (finForm) {
   finForm.addEventListener('submit', async (e) => {
