@@ -170,6 +170,41 @@
           </a>
         </li>
         <li>
+          <a class="nav-link premium-feature" data-target="guarantees" data-required-plan="basico">
+            <i data-lucide="shield"></i>
+            <span>Garantías</span>
+            <i data-lucide="lock" class="lock-icon" style="margin-left: auto; width: 14px; opacity: 0.5;"></i>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link premium-feature" data-target="expenses" data-required-plan="basico">
+            <i data-lucide="receipt"></i>
+            <span>Gastos</span>
+            <i data-lucide="lock" class="lock-icon" style="margin-left: auto; width: 14px; opacity: 0.5;"></i>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link premium-feature" data-target="banks" data-required-plan="intermedio">
+            <i data-lucide="landmark"></i>
+            <span>Bancos</span>
+            <i data-lucide="lock" class="lock-icon" style="margin-left: auto; width: 14px; opacity: 0.5;"></i>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link premium-feature" data-target="documents" data-required-plan="premium">
+            <i data-lucide="file-text"></i>
+            <span>Documentos</span>
+            <i data-lucide="lock" class="lock-icon" style="margin-left: auto; width: 14px; opacity: 0.5;"></i>
+          </a>
+        </li>
+        <li>
+          <a class="nav-link premium-feature" data-target="whatsapp" data-required-plan="premium">
+            <i data-lucide="message-circle"></i>
+            <span>WhatsApp</span>
+            <i data-lucide="lock" class="lock-icon" style="margin-left: auto; width: 14px; opacity: 0.5;"></i>
+          </a>
+        </li>
+        <li>
           <a class="nav-link" data-target="settings">
             <i data-lucide="settings"></i>
             <span>Configuración</span>
@@ -931,5 +966,29 @@
       });
     }
   </script>
+
+  <!-- ================= UPGRADE PLAN MODAL ================= -->
+  <div id="upgrade-modal" class="modal">
+    <div class="modal-content" style="max-width: 500px; text-align: center;">
+      <div class="modal-header" style="justify-content: center; border-bottom: none;">
+        <div style="background: rgba(37, 99, 235, 0.1); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto;">
+          <i data-lucide="lock" style="color: var(--primary); width: 30px; height: 30px;"></i>
+        </div>
+      </div>
+      <h3 style="margin-bottom: 0.5rem; font-size: 1.5rem;">Función Bloqueada</h3>
+      <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Esta característica es exclusiva del plan <b id="upgrade-required-plan" style="color: var(--primary);">Premium</b>. Mejora tu suscripción para desbloquearla.</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <button class="btn btn-primary" onclick="alert('Funcionalidad de pago no implementada aún en la demo.')" style="width: 100%; padding: 0.75rem; font-size: 1rem;">
+          Mejorar Plan Ahora
+        </button>
+        <button class="btn btn-secondary" onclick="document.getElementById('upgrade-modal').classList.remove('active')" style="width: 100%;">
+          Quizás más tarde
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>

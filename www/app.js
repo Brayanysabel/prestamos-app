@@ -484,6 +484,25 @@ function switchSection(targetSectionId) {
 navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
+    
+    // Verificar si es una función premium
+    const requiredPlan = link.getAttribute('data-required-plan');
+    if (requiredPlan) {
+      const userInfo = getUserInfo();
+      const planLevels = { 'principiante': 1, 'basico': 2, 'intermedio': 3, 'premium': 4 };
+      const userPlanLevel = planLevels[userInfo?.plan || 'principiante'];
+      const reqLevel = planLevels[requiredPlan];
+      
+      if (userPlanLevel < reqLevel) {
+        document.getElementById('upgrade-required-plan').textContent = requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1);
+        document.getElementById('upgrade-modal').classList.add('active');
+        return;
+      } else {
+        alert('Este módulo de ' + link.querySelector('span').textContent + ' aún está en construcción para futuras versiones.');
+        return;
+      }
+    }
+    
     const target = link.getAttribute('data-target');
     switchSection(target);
   });
