@@ -33,7 +33,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
 // Token auth middleware
 app.use('/api', (req, res, next) => {
-  if (req.path === '/login' || req.method === 'OPTIONS') {
+  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password'];
+  if (publicRoutes.includes(req.path) || req.method === 'OPTIONS') {
     return next();
   }
 
@@ -157,14 +158,15 @@ db.exec(initSql, async err => {
         const defaultCompanyId = 'comp_default';
         db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
           [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
-            
             // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
-            db.run("ALTER TABLE users ADD COLUMN companyId TEXT", (err) => {
-              // This might fail if the column already exists, which is fine
-              db.run("UPDATE users SET companyId = ? WHERE companyId IS NULL OR companyId NOT IN (SELECT id FROM companies)", [defaultCompanyId], function(err) {
-                if (!err && this.changes > 0) {
-                  console.log(`Migrated ${this.changes} legacy users to default company.`);
-                }
+            const tablesToMigrate = ['users', 'clients', 'loans', 'instalments', 'payments', 'settings'];
+            tablesToMigrate.forEach(table => {
+              db.run(`ALTER TABLE ${table} ADD COLUMN companyId TEXT`, () => {
+                db.run(`UPDATE ${table} SET companyId = ? WHERE companyId IS NULL`, [defaultCompanyId], function(err) {
+                  if (!err && this.changes > 0) {
+                    console.log(`Migrated ${this.changes} legacy records in ${table} to default company.`);
+                  }
+                });
               });
             });
             
@@ -466,8 +468,8 @@ app.post('/api/clients', (req, res) => {
   const { name, phone, email, notes } = req.body;
   const id = generateId('cli');
   const createdAt = new Date().toISOString();
-  const stmt = db.prepare('INSERT INTO clients (id, name, phone, email, notes, createdAt) VALUES (?,?,?,?,?,?)');
-  stmt.run(id, req.user.companyId, req.user.companyId, name, phone, email, notes, createdAt, function (err) {
+  const stmt = db.prepare('INSERT INTO clients (id, companyId, name, phone, email, notes, createdAt) VALUES (?,?,?,?,?,?,?)');
+  stmt.run(id, req.user.companyId, name, phone, email, notes, createdAt, function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, name, phone, email, notes, createdAt });
   });
@@ -532,33 +534,51 @@ app.get('/api/loans', (req, res) => {
 
 app.post('/api/loans', (req, res) => {
   const loan = req.body; // expect full loan object
-  const stmt = db.prepare(`INSERT INTO loans (id, clientId, clientName, amount, rate, term, frequency, type, startDate, totalPayable, interestAmount, status, remainingBalance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  stmt.run(
-    loan.id,
-    loan.clientId,
-    loan.clientName,
-    loan.amount,
-    loan.rate,
-    loan.term,
-    loan.frequency,
-    loan.type,
-    loan.startDate,
-    loan.totalPayable,
-    loan.interestAmount,
-    loan.status,
-    loan.remainingBalance,
-    function (err) {
+  const companyId = req.user.companyId;
+
+  db.get('SELECT max_loans FROM companies WHERE id = ?', [companyId], (err, compRow) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!compRow) return res.status(404).json({ error: 'Empresa no encontrada' });
+
+    const maxLoans = compRow.max_loans;
+    
+    db.get('SELECT COUNT(*) as count FROM loans WHERE companyId = ?', [companyId], (err, countRow) => {
       if (err) return res.status(500).json({ error: err.message });
-      // Insert instalments
-      const insStmt = db.prepare('INSERT INTO instalments (companyId, loanId, idx, dueDate, amount, capital, interest, paid, status) VALUES (?,?,?,?,?,?,?,?,?)');
-      loan.instalments.forEach(inst => {
-        insStmt.run(req.user.companyId, loan.id, inst.index, inst.dueDate, inst.amount, inst.capital, inst.interest, inst.paid, inst.status);
-      });
-      insStmt.finalize();
-      res.json({ message: 'Loan saved' });
-    }
-  );
-  stmt.finalize();
+      
+      if (countRow.count >= maxLoans) {
+        return res.status(403).json({ error: 'Has alcanzado el límite de préstamos (' + maxLoans + ') de tu plan actual. Por favor, mejora tu plan.' });
+      }
+
+      const stmt = db.prepare(`INSERT INTO loans (id, companyId, clientId, clientName, amount, rate, term, frequency, type, startDate, totalPayable, interestAmount, status, remainingBalance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      stmt.run(
+        loan.id,
+        companyId,
+        loan.clientId,
+        loan.clientName,
+        loan.amount,
+        loan.rate,
+        loan.term,
+        loan.frequency,
+        loan.type,
+        loan.startDate,
+        loan.totalPayable,
+        loan.interestAmount,
+        loan.status,
+        loan.remainingBalance,
+        function (err) {
+          if (err) return res.status(500).json({ error: err.message });
+          // Insert instalments
+          const insStmt = db.prepare('INSERT INTO instalments (companyId, loanId, idx, dueDate, amount, capital, interest, paid, status) VALUES (?,?,?,?,?,?,?,?,?)');
+          loan.instalments.forEach(inst => {
+            insStmt.run(companyId, loan.id, inst.index, inst.dueDate, inst.amount, inst.capital, inst.interest, inst.paid, inst.status);
+          });
+          insStmt.finalize();
+          res.json({ message: 'Loan saved' });
+        }
+      );
+      stmt.finalize();
+    });
+  });
 });
 
 // Borrar Préstamo Seguro
@@ -595,8 +615,9 @@ app.delete('/api/loans/:id', (req, res) => {
 app.post('/api/payments', (req, res) => {
   const { loanId, instalmentIdx, amount, date } = req.body; // date format YYYY-MM-DD
   const paymentId = generateId('pay');
-  const stmt = db.prepare('INSERT INTO payments (id, loanId, instalmentIdx, amount, date) VALUES (?,?,?,?,?)');
-  stmt.run(paymentId, loanId, instalmentIdx, amount, date, function (err) {
+  const companyId = req.user.companyId;
+  const stmt = db.prepare('INSERT INTO payments (id, companyId, loanId, instalmentIdx, amount, date) VALUES (?,?,?,?,?,?)');
+  stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
     if (err) return res.status(500).json({ error: err.message });
     // Update instalment paid and possibly status
     db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
