@@ -131,6 +131,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// Lógica de Cerrar Sesión
+document.getElementById('logout-btn').addEventListener('click', () => {
+  localStorage.removeItem('prestamos_auth_token');
+  localStorage.removeItem('prestamos_is_superadmin');
+  showLogin();
+});
+
 // Lógica para mostrar/ocultar pantalla de registro
 document.getElementById('show-signup-btn').addEventListener('click', () => {
   document.getElementById('login-screen').classList.remove('active');
