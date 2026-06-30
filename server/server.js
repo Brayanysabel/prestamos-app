@@ -46,7 +46,7 @@ app.use('/api', (req, res, next) => {
     if (err) {
       return res.status(401).json({ error: 'Token inválido o expirado' });
     }
-    req.user = decoded; // ej. { username: 'admin' }
+    req.user = decoded; // { username, companyId, plan } // ej. { username: 'admin' }
     next();
   });
 });
@@ -57,13 +57,25 @@ const db = require('./dbWrapper');
 
 // Create tables if they don't exist
 const initSql = `
+CREATE TABLE IF NOT EXISTS companies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'basico',
+  status TEXT NOT NULL DEFAULT 'active',
+  max_loans INTEGER NOT NULL DEFAULT 500,
+  max_users INTEGER NOT NULL DEFAULT 2,
+  createdAt TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
   username TEXT PRIMARY KEY,
-  password TEXT NOT NULL
+  password TEXT NOT NULL,
+  companyId TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
   name TEXT NOT NULL,
   phone TEXT,
   email TEXT,
@@ -73,6 +85,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE TABLE IF NOT EXISTS loans (
   id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
   clientId TEXT NOT NULL,
   clientName TEXT NOT NULL,
   amount REAL NOT NULL,
@@ -90,6 +103,7 @@ CREATE TABLE IF NOT EXISTS loans (
 
 CREATE TABLE IF NOT EXISTS instalments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  companyId TEXT NOT NULL,
   loanId TEXT NOT NULL,
   idx INTEGER NOT NULL,
   dueDate TEXT NOT NULL,
@@ -103,6 +117,7 @@ CREATE TABLE IF NOT EXISTS instalments (
 
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
   loanId TEXT NOT NULL,
   instalmentIdx INTEGER NOT NULL,
   amount REAL NOT NULL,
@@ -111,8 +126,10 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 CREATE TABLE IF NOT EXISTS settings (
-  key TEXT PRIMARY KEY,
-  value TEXT
+  key TEXT,
+  companyId TEXT NOT NULL,
+  value TEXT,
+  PRIMARY KEY (companyId, key)
 );
 `;
 
@@ -149,7 +166,7 @@ function generateId(prefix) {
 
 // Settings
 app.get('/api/settings', (req, res) => {
-  db.all("SELECT key, value FROM settings", [], (err, rows) => {
+  db.all("SELECT key, value FROM settings WHERE companyId = ?", [req.user.companyId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const settings = {};
     rows.forEach(r => settings[r.key] = r.value);
@@ -162,11 +179,11 @@ app.put('/api/settings', (req, res) => {
   if (!username) return res.status(401).json({ error: 'No autorizado' });
 
   const { companyName, companyLogo } = req.body;
-  const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+  const stmt = db.prepare("INSERT OR REPLACE INTO settings (companyId, key, value) VALUES (?, ?, ?)");
   
   try {
-    if (companyName !== undefined) stmt.run('companyName', companyName);
-    if (companyLogo !== undefined) stmt.run('companyLogo', companyLogo);
+    if (companyName !== undefined) stmt.run(req.user.companyId, 'companyName', companyName);
+    if (companyLogo !== undefined) stmt.run(req.user.companyId, 'companyLogo', companyLogo);
     stmt.finalize();
     res.json({ message: 'Ajustes guardados correctamente' });
   } catch(e) {
@@ -186,7 +203,7 @@ app.post('/api/login', (req, res) => {
   username = username.trim(); // <-- Arreglo para celulares que añaden un espacio al final
   console.log(`[LOGIN ATTEMPT] username: '${username}', password: '${password}'`);
   
-  db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
+  db.get("SELECT u.*, c.plan FROM users u JOIN companies c ON u.companyId = c.id WHERE u.username = ?", [username], async (err, row) => {
     if (err) {
       console.log(`[LOGIN FAILED] DB Error:`, err.message);
       return res.status(500).json({ error: err.message });
@@ -204,7 +221,7 @@ app.post('/api/login', (req, res) => {
     
     console.log(`[LOGIN SUCCESS] User: ${username}`);
     // Generate JWT token
-    const token = jwt.sign({ username: row.username }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan }, JWT_SECRET, { expiresIn: '24h' });
     res.json({ token, username });
   });
 });
@@ -242,7 +259,7 @@ app.post('/api/backup/email', (req, res) => {
   if (!smtpUser || !smtpPass) return res.status(400).json({ error: 'Credenciales SMTP (Remitente) son requeridas' });
 
   // Recopilar datos
-  db.all('SELECT * FROM clients', [], (err, clients) => {
+  db.all('SELECT * FROM clients WHERE companyId = ?', [], (err, clients) => {
     if (err) return res.status(500).json({ error: err.message });
     db.all('SELECT * FROM loans', [], (err, loans) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -294,7 +311,7 @@ app.post('/api/backup/email', (req, res) => {
 
 // Clients
 app.get('/api/clients', (req, res) => {
-  db.all('SELECT * FROM clients', [], (err, rows) => {
+  db.all('SELECT * FROM clients WHERE companyId = ?', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -305,7 +322,7 @@ app.post('/api/clients', (req, res) => {
   const id = generateId('cli');
   const createdAt = new Date().toISOString();
   const stmt = db.prepare('INSERT INTO clients (id, name, phone, email, notes, createdAt) VALUES (?,?,?,?,?,?)');
-  stmt.run(id, name, phone, email, notes, createdAt, function (err) {
+  stmt.run(id, req.user.companyId, req.user.companyId, name, phone, email, notes, createdAt, function (err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ id, name, phone, email, notes, createdAt });
   });
@@ -334,7 +351,7 @@ app.delete('/api/clients/:id', (req, res) => {
     db.run("DELETE FROM payments WHERE loanId IN (SELECT id FROM loans WHERE clientId = ?)", [clientId], (err) => {
       db.run("DELETE FROM instalments WHERE loanId IN (SELECT id FROM loans WHERE clientId = ?)", [clientId], (err) => {
         db.run("DELETE FROM loans WHERE clientId = ?", [clientId], (err) => {
-          db.run("DELETE FROM clients WHERE id = ?", [clientId], (err) => {
+          db.run("DELETE FROM clients WHERE id = ? AND companyId = ?", [clientId, req.user.companyId], (err) => {
             if (err) return res.status(500).json({ error: err.message });
             res.json({ message: 'Cliente eliminado exitosamente' });
           });
@@ -357,10 +374,8 @@ app.get('/api/loans', (req, res) => {
       'paid', i.paid,
       'status', i.status
     )) AS instalments_json
-    FROM loans l
-    LEFT JOIN instalments i ON l.id = i.loanId
-    GROUP BY l.id`;
-  db.all(sql, [], (err, rows) => {
+    FROM loans l LEFT JOIN instalments i ON l.id = i.loanId WHERE l.companyId = ? GROUP BY l.id`;
+  db.all(sql, [req.user.companyId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const loans = rows.map(r => ({
       ...r,
@@ -390,9 +405,9 @@ app.post('/api/loans', (req, res) => {
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
       // Insert instalments
-      const insStmt = db.prepare('INSERT INTO instalments (loanId, idx, dueDate, amount, capital, interest, paid, status) VALUES (?,?,?,?,?,?,?,?)');
+      const insStmt = db.prepare('INSERT INTO instalments (companyId, loanId, idx, dueDate, amount, capital, interest, paid, status) VALUES (?,?,?,?,?,?,?,?,?)');
       loan.instalments.forEach(inst => {
-        insStmt.run(loan.id, inst.index, inst.dueDate, inst.amount, inst.capital, inst.interest, inst.paid, inst.status);
+        insStmt.run(req.user.companyId, loan.id, inst.index, inst.dueDate, inst.amount, inst.capital, inst.interest, inst.paid, inst.status);
       });
       insStmt.finalize();
       res.json({ message: 'Loan saved' });
@@ -420,9 +435,9 @@ app.delete('/api/loans/:id', (req, res) => {
     }
 
     // Si la contraseña es correcta, borrar todo lo relacionado al préstamo
-    db.run("DELETE FROM payments WHERE loanId = ?", [loanId], (err) => {
-      db.run("DELETE FROM instalments WHERE loanId = ?", [loanId], (err) => {
-        db.run("DELETE FROM loans WHERE id = ?", [loanId], (err) => {
+    db.run("DELETE FROM payments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
+      db.run("DELETE FROM instalments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
+        db.run("DELETE FROM loans WHERE id = ? AND companyId = ?", [loanId], (err) => {
           if (err) return res.status(500).json({ error: err.message });
           res.json({ message: 'Préstamo eliminado exitosamente' });
         });

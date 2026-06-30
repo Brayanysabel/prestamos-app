@@ -48,6 +48,13 @@
         </button>
       </form>
       
+      <div style="margin-top: 1rem; text-align: center;">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">¿No tienes una cuenta para tu financiera?</p>
+        <button type="button" id="show-signup-btn" class="btn btn-secondary" style="width: 100%;">
+          Crear una cuenta nueva
+        </button>
+      </div>
+      
       <!-- Botón de instalación en Login -->
       <div id="login-install-container" style="margin-top: 1.5rem; text-align: center; border-top: 1px solid var(--border); padding-top: 1rem;">
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">¿Prefieres usarla como aplicación nativa?</p>
@@ -55,6 +62,67 @@
           <i data-lucide="download"></i> Descargar e Instalar App
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ================= SIGNUP SCREEN ================= -->
+  <div id="signup-screen" class="login-overlay d-none">
+    <div class="login-container" style="max-width: 500px;">
+      <div class="login-header">
+        <h2>Crear una Cuenta</h2>
+        <p>Registra tu financiera y elige un plan</p>
+      </div>
+      <form id="signup-form">
+        <div class="form-group mb-4">
+          <label>Nombre de tu Financiera o Negocio</label>
+          <input type="text" id="signup-company" placeholder="Ej. Inversiones Pérez" required>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="form-group">
+            <label>Usuario (Admin)</label>
+            <input type="text" id="signup-username" placeholder="Ej. admin" required>
+          </div>
+          <div class="form-group">
+            <label>Contraseña</label>
+            <input type="password" id="signup-password" placeholder="••••••••" required>
+          </div>
+        </div>
+        
+        <div class="form-group mb-4">
+          <label>Selecciona tu Plan</label>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;">
+              <input type="radio" name="signup-plan" value="principiante" checked>
+              <div style="display: flex; justify-content: space-between; width: 100%;">
+                <span><b>Principiante</b> (Hasta 100 Préstamos)</span>
+                <span style="color: var(--primary); font-weight: bold;">RD$900/mes</span>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;">
+              <input type="radio" name="signup-plan" value="basico">
+              <div style="display: flex; justify-content: space-between; width: 100%;">
+                <span><b>Básico</b> (Hasta 500 Préstamos)</span>
+                <span style="color: var(--primary); font-weight: bold;">RD$1,500/mes</span>
+              </div>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;">
+              <input type="radio" name="signup-plan" value="intermedio">
+              <div style="display: flex; justify-content: space-between; width: 100%;">
+                <span><b>Intermedio</b> (Hasta 1000 Préstamos)</span>
+                <span style="color: var(--primary); font-weight: bold;">RD$2,000/mes</span>
+              </div>
+            </label>
+          </div>
+        </div>
+        
+        <div id="signup-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
+        <div id="signup-success" class="text-success mb-4 d-none" style="font-size: 0.85rem; color: var(--success); text-align: center;">¡Cuenta creada! Volviendo al inicio...</div>
+        
+        <div style="display: flex; gap: 1rem;">
+          <button type="button" id="back-to-login-btn" class="btn btn-secondary" style="flex: 1;">Volver</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">Registrarse</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -108,12 +176,19 @@
       </nav>
       
       <div class="sidebar-footer">
+        <div id="plan-usage-widget" style="padding: 0.75rem; background-color: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 0.75rem;">
+          <div style="font-size: 0.8rem; font-weight: bold; margin-bottom: 0.25rem;">Plan: <span id="current-plan-name" style="color: var(--primary);">Básico</span></div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Préstamos: <span id="current-plan-usage">0</span> / <span id="current-plan-limit">500</span></div>
+          <div style="width: 100%; background-color: var(--border); height: 4px; border-radius: 2px; margin-top: 0.5rem; overflow: hidden;">
+            <div id="current-plan-progress" style="width: 0%; height: 100%; background-color: var(--primary);"></div>
+          </div>
+        </div>
         <button id="theme-toggle-btn" class="btn btn-secondary btn-sm" style="width: 100%; display: flex; justify-content: center; gap: 0.5rem;">
           <i data-lucide="sun" id="theme-icon"></i>
           <span id="theme-text">Modo Oscuro</span>
         </button>
-        <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">
-          v1.0.0 &bull; Local-First
+        <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.5rem;">
+          v2.0.0 &bull; Cloud SaaS
         </div>
       </div>
     </aside>

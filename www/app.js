@@ -105,6 +105,63 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// Lógica para mostrar/ocultar pantalla de registro
+document.getElementById('show-signup-btn').addEventListener('click', () => {
+  document.getElementById('login-screen').classList.remove('active');
+  document.getElementById('login-screen').classList.add('d-none');
+  document.getElementById('signup-screen').classList.add('active');
+  document.getElementById('signup-screen').classList.remove('d-none');
+});
+
+document.getElementById('back-to-login-btn').addEventListener('click', () => {
+  document.getElementById('signup-screen').classList.remove('active');
+  document.getElementById('signup-screen').classList.add('d-none');
+  document.getElementById('login-screen').classList.add('active');
+  document.getElementById('login-screen').classList.remove('d-none');
+});
+
+// Lógica del formulario de registro (SaaS)
+document.getElementById('signup-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const companyName = document.getElementById('signup-company').value;
+  const username = document.getElementById('signup-username').value;
+  const password = document.getElementById('signup-password').value;
+  const plan = document.querySelector('input[name="signup-plan"]:checked').value;
+  
+  const errorEl = document.getElementById('signup-error');
+  const successEl = document.getElementById('signup-success');
+  const btn = e.target.querySelector('button[type="submit"]');
+  
+  try {
+    btn.disabled = true;
+    errorEl.classList.add('d-none');
+    
+    const res = await fetch(`${API_URL}/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyName, username, password, plan })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al registrar la cuenta');
+    
+    successEl.classList.remove('d-none');
+    setTimeout(() => {
+      document.getElementById('back-to-login-btn').click();
+      document.getElementById('login-username').value = username;
+      document.getElementById('login-password').value = password;
+      successEl.classList.add('d-none');
+      e.target.reset();
+    }, 2000);
+    
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // Guardar preferencias locales (ej. tema)
 function savePreferences() {
   localStorage.setItem('prestamos_theme', state.theme);
