@@ -1,5 +1,16 @@
 // PrestamosApp - Lógica de Negocio e Interfaz de Usuario
 
+// Helper seguro para Lucide icons - evita crash si la librería no cargó
+function safeCreateIcons() {
+  try {
+    if (typeof lucide !== 'undefined' && lucide && typeof lucide.createIcons === 'function') {
+      safeCreateIcons();
+    }
+  } catch(e) {
+    // silenciar error si lucide no está disponible
+  }
+}
+
 // --- 1. ESTADO DE LA APLICACIÓN ---
 let state = {
   clients: [],
@@ -1019,7 +1030,7 @@ calculatorForm.addEventListener('submit', (e) => {
   }
   
   // Re-inicializar iconos de la tabla
-  lucide.createIcons();
+  safeCreateIcons();
 });
 
 // Renderizar filas de la tabla de amortización generada
@@ -1205,7 +1216,7 @@ function renderClientsTable() {
     clientsTableBody.appendChild(tr);
   });
   
-  lucide.createIcons();
+  safeCreateIcons();
 }
 
 // Editar cliente modal
@@ -1269,7 +1280,7 @@ function viewClientDetail(id) {
   }
   
   openModal('modal-client-detail');
-  lucide.createIcons();
+  safeCreateIcons();
 }
 
 // 5.4 GESTIÓN DE PRÉSTAMOS
@@ -1330,7 +1341,7 @@ function renderLoansTable() {
     loansTableBody.appendChild(tr);
   });
   
-  lucide.createIcons();
+  safeCreateIcons();
 }
 
 // Ver ficha detallada de un Préstamo
@@ -1409,7 +1420,7 @@ function viewLoanDetail(loanId) {
   });
   
   openModal('modal-loan-detail');
-  lucide.createIcons();
+  safeCreateIcons();
 }
 
 // 5.5 REGISTRO DE PAGOS / COBROS
@@ -1494,7 +1505,7 @@ function applyTheme(theme) {
     themeText.textContent = "Modo Oscuro";
     settingsThemeBtn.innerHTML = '<i data-lucide="moon"></i> Tema Oscuro';
   }
-  lucide.createIcons();
+  safeCreateIcons();
 
   // Re-dibujar gráficos si están activos para adaptar colores de fuente
   const activeLink = document.querySelector('.nav-link.active');
@@ -1661,7 +1672,7 @@ if (emailBackupForm) {
     
     btn.disabled = true;
     btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Enviando...';
-    lucide.createIcons();
+    safeCreateIcons();
     msgEl.textContent = '';
     
     try {
@@ -1679,7 +1690,7 @@ if (emailBackupForm) {
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i data-lucide="mail"></i> Enviar Respaldo';
-      lucide.createIcons();
+      safeCreateIcons();
     }
   });
 }
@@ -2035,7 +2046,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   
   // Inicializar Lucide Icons
-  lucide.createIcons();
+  safeCreateIcons();
 });
 
 // --- SaaS Super Admin Functions ---
@@ -2110,7 +2121,7 @@ async function loadSaasCompanies() {
     document.getElementById('saas-kpi-suspended').textContent = totalSuspendidas;
     document.getElementById('saas-kpi-income').textContent = formatCurrency(ingresosProyectados);
     
-    lucide.createIcons();
+    safeCreateIcons();
   } catch(e) {
     console.error(e);
     alert('Error cargando empresas SaaS: ' + e.message);
@@ -2163,7 +2174,7 @@ async function deleteSaasPlan(id) {
   try {
     await apiRequest(`/saas/plans/${id}`, { method: 'DELETE' });
     await loadSaasPlans();
-    lucide.createIcons();
+    safeCreateIcons();
   } catch (err) {
     alert(err.message);
   }
@@ -2267,7 +2278,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         closeModal('modal-saas-plan');
         await loadSaasPlans();
-        lucide.createIcons();
+        safeCreateIcons();
       } catch (err) {
         errorEl.textContent = err.message;
         errorEl.classList.remove('d-none');
