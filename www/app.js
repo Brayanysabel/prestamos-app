@@ -162,6 +162,113 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
   }
 });
 
+// Lógica de Recuperación de Contraseña
+document.getElementById('show-forgot-password-btn').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('login-screen').classList.add('d-none');
+  document.getElementById('forgot-password-screen').classList.remove('d-none');
+});
+
+document.getElementById('back-from-forgot-btn').addEventListener('click', () => {
+  document.getElementById('forgot-password-screen').classList.add('d-none');
+  document.getElementById('login-screen').classList.remove('d-none');
+});
+
+document.getElementById('show-reset-password-btn').addEventListener('click', () => {
+  document.getElementById('forgot-password-screen').classList.add('d-none');
+  document.getElementById('reset-password-screen').classList.remove('d-none');
+});
+
+document.getElementById('back-from-reset-btn').addEventListener('click', () => {
+  document.getElementById('reset-password-screen').classList.add('d-none');
+  document.getElementById('login-screen').classList.remove('d-none');
+});
+
+// Enviar correo de recuperación
+document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('forgot-username').value;
+  const errorEl = document.getElementById('forgot-error');
+  const successEl = document.getElementById('forgot-success');
+  const btn = e.target.querySelector('button[type="submit"]');
+  
+  try {
+    btn.disabled = true;
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+    
+    const res = await fetch(`${API_URL}/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al solicitar recuperación');
+    
+    successEl.textContent = data.message;
+    successEl.classList.remove('d-none');
+    
+    // Si estamos en local y nos devuelve el token, lo pre-llenamos por comodidad
+    if (data.token) {
+      setTimeout(() => {
+        document.getElementById('show-reset-password-btn').click();
+        document.getElementById('reset-username').value = username;
+        document.getElementById('reset-token').value = data.token;
+      }, 3000);
+    }
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Restablecer contraseña
+document.getElementById('reset-password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('reset-username').value;
+  const token = document.getElementById('reset-token').value;
+  const newPassword = document.getElementById('reset-new-password').value;
+  
+  const errorEl = document.getElementById('reset-error');
+  const successEl = document.getElementById('reset-success');
+  const btn = e.target.querySelector('button[type="submit"]');
+  
+  try {
+    btn.disabled = true;
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+    
+    const res = await fetch(`${API_URL}/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, token, newPassword })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al restablecer contraseña');
+    
+    successEl.textContent = data.message;
+    successEl.classList.remove('d-none');
+    
+    setTimeout(() => {
+      document.getElementById('back-from-reset-btn').click();
+      document.getElementById('login-username').value = username;
+      document.getElementById('login-password').value = newPassword;
+      e.target.reset();
+      successEl.classList.add('d-none');
+    }, 2000);
+    
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // Guardar preferencias locales (ej. tema)
 function savePreferences() {
   localStorage.setItem('prestamos_theme', state.theme);

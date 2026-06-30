@@ -39,7 +39,10 @@
           <input type="text" id="login-username" placeholder="Ej. admin" required>
         </div>
         <div class="form-group mb-4">
-          <label for="login-password">Contraseña</label>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label for="login-password">Contraseña</label>
+            <a href="#" id="show-forgot-password-btn" style="font-size: 0.8rem; color: var(--primary); text-decoration: none;">¿Olvidaste tu contraseña?</a>
+          </div>
           <input type="password" id="login-password" placeholder="••••••••" required>
         </div>
         <div id="login-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
@@ -986,6 +989,67 @@
           Quizás más tarde
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ================= FORGOT PASSWORD SCREEN ================= -->
+  <div id="forgot-password-screen" class="login-overlay d-none">
+    <div class="login-container" style="max-width: 450px;">
+      <div class="login-header">
+        <h2>Recuperar Contraseña</h2>
+        <p>Ingresa tu usuario para recibir un código de recuperación.</p>
+      </div>
+      <form id="forgot-password-form">
+        <div class="form-group mb-4">
+          <label>Usuario / Correo</label>
+          <input type="text" id="forgot-username" placeholder="Ej. admin" required>
+        </div>
+        
+        <div id="forgot-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
+        <div id="forgot-success" class="text-success mb-4 d-none" style="font-size: 0.85rem; color: var(--success); text-align: center;"></div>
+        
+        <div style="display: flex; gap: 1rem;">
+          <button type="button" id="back-from-forgot-btn" class="btn btn-secondary" style="flex: 1;">Volver</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">Enviar</button>
+        </div>
+      </form>
+      <div style="margin-top: 1rem; text-align: center;">
+        <button type="button" id="show-reset-password-btn" class="btn btn-secondary btn-sm" style="background: none; border: none; color: var(--text-muted); text-decoration: underline;">
+          Ya tengo un código de recuperación
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= RESET PASSWORD SCREEN ================= -->
+  <div id="reset-password-screen" class="login-overlay d-none">
+    <div class="login-container" style="max-width: 450px;">
+      <div class="login-header">
+        <h2>Nueva Contraseña</h2>
+        <p>Ingresa el código que recibiste y tu nueva contraseña.</p>
+      </div>
+      <form id="reset-password-form">
+        <div class="form-group mb-4">
+          <label>Usuario</label>
+          <input type="text" id="reset-username" placeholder="Tu usuario" required>
+        </div>
+        <div class="form-group mb-4">
+          <label>Código de Recuperación</label>
+          <input type="text" id="reset-token" placeholder="Ej. A1B2C3D4" required style="letter-spacing: 2px; text-transform: uppercase;">
+        </div>
+        <div class="form-group mb-4">
+          <label>Nueva Contraseña</label>
+          <input type="password" id="reset-new-password" placeholder="••••••••" required>
+        </div>
+        
+        <div id="reset-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
+        <div id="reset-success" class="text-success mb-4 d-none" style="font-size: 0.85rem; color: var(--success); text-align: center;"></div>
+        
+        <div style="display: flex; gap: 1rem;">
+          <button type="button" id="back-from-reset-btn" class="btn btn-secondary" style="flex: 1;">Volver</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar</button>
+        </div>
+      </form>
     </div>
   </div>
 
