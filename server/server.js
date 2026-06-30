@@ -157,11 +157,20 @@ db.exec(initSql, async err => {
         const defaultCompanyId = 'comp_default';
         db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
           [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
-            db.run("UPDATE users SET companyId = ? WHERE companyId IS NULL OR companyId NOT IN (SELECT id FROM companies)", [defaultCompanyId], function(err) {
-              if (!err && this.changes > 0) {
-                console.log(`Migrated ${this.changes} legacy users to default company.`);
-              }
+            
+            // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
+            db.run("ALTER TABLE users ADD COLUMN companyId TEXT", (err) => {
+              // This might fail if the column already exists, which is fine
+              db.run("UPDATE users SET companyId = ? WHERE companyId IS NULL OR companyId NOT IN (SELECT id FROM companies)", [defaultCompanyId], function(err) {
+                if (!err && this.changes > 0) {
+                  console.log(`Migrated ${this.changes} legacy users to default company.`);
+                }
+              });
             });
+            
+            // Añadir resetToken
+            db.run("ALTER TABLE users ADD COLUMN resetToken TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN resetTokenExpires TEXT", () => {});
           }
         );
 
