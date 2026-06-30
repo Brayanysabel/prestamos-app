@@ -331,6 +331,38 @@
             </table>
           </div>
         </div>
+
+        <!-- SECCION: GESTIÓN DE PLANES SAAS -->
+        <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem; margin-bottom: 2rem;">
+          <div>
+            <h2 class="card-title" style="margin-bottom: 0.5rem;">Gestión de Planes</h2>
+            <p style="color: var(--text-muted);">Configura los planes de suscripción y sus límites</p>
+          </div>
+          <button class="btn btn-primary" onclick="openSaasPlanModal()">
+            <i data-lucide="plus"></i> Nuevo Plan
+          </button>
+        </div>
+
+        <div class="card glass-effect">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID Plan</th>
+                  <th>Nombre</th>
+                  <th>Precio (RD$)</th>
+                  <th>Límite Usuarios</th>
+                  <th>Límite Préstamos</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="saas-plans-table">
+                <!-- Planes renderizados aquí -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </section>
 
       <!-- ================= PESTAÑA: DASHBOARD ================= -->
@@ -1160,6 +1192,124 @@
         <div style="display: flex; gap: 1rem;">
           <button type="button" id="back-from-reset-btn" class="btn btn-secondary" style="flex: 1;">Volver</button>
           <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GESTIÓN DE PLANES SAAS -->
+  <div id="modal-saas-plan" class="modal-overlay">
+    <div class="modal-content glass-effect">
+      <button class="close-btn" onclick="closeModal('modal-saas-plan')">
+        <i data-lucide="x"></i>
+      </button>
+      
+      <div class="modal-header">
+        <div class="modal-icon primary">
+          <i data-lucide="layout-list"></i>
+        </div>
+        <div>
+          <h2 class="card-title" id="saas-plan-modal-title">Nuevo Plan</h2>
+          <p class="card-subtitle">Configura los límites de este plan.</p>
+        </div>
+      </div>
+      
+      <div class="alert danger d-none" id="saas-plan-error" style="margin-bottom: 1.5rem;"></div>
+      
+      <form id="saas-plan-form">
+        <div class="form-group">
+          <label class="form-label">ID del Plan (ej. 'premium')</label>
+          <input type="text" id="saas-plan-id" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nombre para Mostrar</label>
+          <input type="text" id="saas-plan-name" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio Mensual (RD$)</label>
+          <input type="number" step="0.01" id="saas-plan-price" class="form-input" required>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Límite de Usuarios</label>
+            <input type="number" id="saas-plan-users" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Límite de Préstamos</label>
+            <input type="number" id="saas-plan-loans" class="form-input" required>
+          </div>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modal-saas-plan')">Cancelar</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: EDITAR PLAN DE EMPRESA -->
+  <div id="modal-saas-edit-company" class="modal-overlay">
+    <div class="modal-content glass-effect">
+      <button class="close-btn" onclick="closeModal('modal-saas-edit-company')">
+        <i data-lucide="x"></i>
+      </button>
+      
+      <div class="modal-header">
+        <div class="modal-icon warning">
+          <i data-lucide="edit"></i>
+        </div>
+        <div>
+          <h2 class="card-title">Cambiar Plan</h2>
+          <p class="card-subtitle" id="saas-edit-company-name-label">Selecciona el nuevo plan para esta empresa.</p>
+        </div>
+      </div>
+      
+      <div class="alert danger d-none" id="saas-edit-company-error" style="margin-bottom: 1.5rem;"></div>
+      
+      <form id="saas-edit-company-form">
+        <input type="hidden" id="saas-edit-company-id">
+        <div class="form-group">
+          <label class="form-label">Seleccionar Nuevo Plan</label>
+          <select id="saas-edit-company-plan" class="form-input" required>
+            <!-- Planes dinámicos aquí -->
+          </select>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modal-saas-edit-company')">Cancelar</button>
+          <button type="submit" class="btn btn-warning" style="flex: 1;">Actualizar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ELIMINAR EMPRESA -->
+  <div id="modal-saas-delete-company" class="modal-overlay">
+    <div class="modal-content glass-effect">
+      <button class="close-btn" onclick="closeModal('modal-saas-delete-company')">
+        <i data-lucide="x"></i>
+      </button>
+      
+      <div class="modal-header">
+        <div class="modal-icon danger">
+          <i data-lucide="alert-triangle"></i>
+        </div>
+        <div>
+          <h2 class="card-title">Eliminar Empresa Definitivamente</h2>
+        </div>
+      </div>
+      
+      <div class="alert danger" style="margin-bottom: 1.5rem;">
+        <strong>¡ADVERTENCIA CRÍTICA!</strong> Estás a punto de borrar esta empresa y TODOS sus datos (clientes, préstamos, pagos, usuarios). Esta acción NO SE PUEDE DESHACER.
+      </div>
+      
+      <form id="saas-delete-company-form">
+        <input type="hidden" id="saas-delete-company-id">
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modal-saas-delete-company')">Cancelar</button>
+          <button type="submit" class="btn btn-danger" style="flex: 1;">Borrar Definitivamente</button>
         </div>
       </form>
     </div>

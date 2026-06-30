@@ -143,11 +143,31 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT,
   PRIMARY KEY (companyId, key)
 );
+
+CREATE TABLE IF NOT EXISTS saas_plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  price REAL NOT NULL,
+  max_users INTEGER NOT NULL,
+  max_loans INTEGER NOT NULL
+);
 `;
 
 db.exec(initSql, async err => {
   if (err) console.error('Error initializing DB schema', err);
   else {
+    // Inicializar planes por defecto si no existen
+    db.get("SELECT COUNT(*) as count FROM saas_plans", (err, row) => {
+      if (!err && row.count === 0) {
+        const stmt = db.prepare("INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)");
+        stmt.run('principiante', 'Principiante', 900, 1, 20);
+        stmt.run('basico', 'Básico', 1500, 2, 50);
+        stmt.run('intermedio', 'Intermedio', 2000, 5, 200);
+        stmt.run('premium', 'Premium', 2500, 10, 999999);
+        stmt.finalize();
+      }
+    });
+
     // Seed admin user if none exists, or update weak passwords
     const defaultHash = await bcrypt.hash('admin', 10);
     
@@ -736,6 +756,78 @@ app.put('/api/saas/companies/:id/status', requireSuperAdmin, (req, res) => {
   db.run('UPDATE companies SET status = ? WHERE id = ?', [status, targetCompanyId], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: 'Estado actualizado correctamente' });
+  });
+});
+
+app.put('/api/saas/companies/:id/plan', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  const { plan } = req.body;
+  if (!plan) return res.status(400).json({ error: 'Falta el plan' });
+
+  // Update company plan
+  db.run('UPDATE companies SET plan = ? WHERE id = ?', [plan, targetCompanyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan actualizado correctamente' });
+  });
+});
+
+app.delete('/api/saas/companies/:id', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  if (targetCompanyId === 'comp_default') {
+    return res.status(400).json({ error: 'No se puede eliminar la empresa principal' });
+  }
+
+  // Delete everything related to this company
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    db.run('DELETE FROM settings WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM payments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM instalments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM loans WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM clients WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM users WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM saas_payments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM companies WHERE id = ?', [targetCompanyId], function(err) {
+      if (err) {
+        db.run('ROLLBACK');
+        return res.status(500).json({ error: err.message });
+      }
+      db.run('COMMIT');
+      res.json({ message: 'Empresa eliminada por completo' });
+    });
+  });
+});
+
+// SaaS Plans CRUD
+app.get('/api/saas/plans', requireSuperAdmin, (req, res) => {
+  db.all('SELECT * FROM saas_plans ORDER BY price ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/saas/plans', requireSuperAdmin, (req, res) => {
+  const { id, name, price, max_users, max_loans } = req.body;
+  db.run('INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)', 
+    [id, name, price, max_users, max_loans], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan creado', id });
+  });
+});
+
+app.put('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
+  const { name, price, max_users, max_loans } = req.body;
+  db.run('UPDATE saas_plans SET name = ?, price = ?, max_users = ?, max_loans = ? WHERE id = ?', 
+    [name, price, max_users, max_loans, req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan actualizado' });
+  });
+});
+
+app.delete('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
+  db.run('DELETE FROM saas_plans WHERE id = ?', [req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan eliminado' });
   });
 });
 

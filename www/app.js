@@ -2042,6 +2042,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadSaasCompanies() {
   try {
+    await loadSaasPlans();
+    
     const companies = await apiRequest('/saas/companies');
     const tbody = document.getElementById('saas-companies-table');
     tbody.innerHTML = '';
@@ -2050,12 +2052,13 @@ async function loadSaasCompanies() {
     let totalSuspendidas = 0;
     let ingresosProyectados = 0;
     
-    const precios = {
-      'principiante': 900,
-      'basico': 1500,
-      'intermedio': 2000,
-      'premium': 2500
-    };
+    // Usaremos los planes actuales o 0 si no hay
+    const precios = {};
+    if (currentSaasPlans && currentSaasPlans.length > 0) {
+      currentSaasPlans.forEach(p => {
+        precios[p.id] = p.price;
+      });
+    }
 
     companies.forEach(c => {
       const isSuspended = c.status === 'suspended';
@@ -2082,12 +2085,20 @@ async function loadSaasCompanies() {
         <td>${c.validUntil || 'Ilimitado'}</td>
         <td>${c.userCount} / ${c.loanCount}</td>
         <td>
-          <button class="btn btn-sm btn-success" onclick="openSaasPayModal('${c.id}', '${c.name.replace(/'/g, "\\'")}')" title="Registrar Pago">
-            <i data-lucide="dollar-sign"></i>
-          </button>
-          <button class="btn btn-sm ${isSuspended ? 'btn-primary' : 'btn-danger'}" onclick="toggleSaasStatus('${c.id}', '${isSuspended ? 'active' : 'suspended'}')" title="${isSuspended ? 'Reactivar' : 'Suspender'}">
-            <i data-lucide="${isSuspended ? 'check-circle' : 'ban'}"></i>
-          </button>
+          <div style="display: flex; gap: 0.25rem;">
+            <button class="btn btn-sm btn-success" onclick="openSaasPayModal('${c.id}', '${c.name.replace(/'/g, "\\'")}')" title="Registrar Pago">
+              <i data-lucide="dollar-sign"></i> Cobrar
+            </button>
+            <button class="btn btn-sm ${isSuspended ? 'btn-primary' : 'btn-secondary'}" onclick="toggleSaasStatus('${c.id}', '${isSuspended ? 'active' : 'suspended'}')" title="${isSuspended ? 'Reactivar' : 'Suspender'}">
+              <i data-lucide="${isSuspended ? 'check-circle' : 'ban'}"></i> ${isSuspended ? 'Reactivar' : 'Suspender'}
+            </button>
+            <button class="btn btn-sm btn-warning" onclick="openSaasEditCompany('${c.id}', '${c.name.replace(/'/g, "\\'")}', '${c.plan}')" title="Editar Plan">
+              <i data-lucide="edit"></i> Plan
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="openSaasDeleteCompany('${c.id}')" title="Eliminar Empresa">
+              <i data-lucide="trash-2"></i> Borrar
+            </button>
+          </div>
         </td>
       `;
       tbody.appendChild(tr);
@@ -2105,6 +2116,150 @@ async function loadSaasCompanies() {
     alert('Error cargando empresas SaaS: ' + e.message);
   }
 }
+
+let currentSaasPlans = [];
+
+async function loadSaasPlans() {
+  try {
+    const plans = await apiRequest('/saas/plans');
+    currentSaasPlans = plans;
+    const tbody = document.getElementById('saas-plans-table');
+    tbody.innerHTML = '';
+    
+    plans.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${p.id}</strong></td>
+        <td>${p.name}</td>
+        <td>${formatCurrency(p.price)}</td>
+        <td>${p.max_users >= 9999 ? 'Ilimitado' : p.max_users}</td>
+        <td>${p.max_loans >= 9999 ? 'Ilimitado' : p.max_loans}</td>
+        <td>
+          <button class="btn btn-sm btn-danger" onclick="deleteSaasPlan('${p.id}')">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('Error cargando planes SaaS', e);
+  }
+}
+
+function openSaasPlanModal() {
+  document.getElementById('saas-plan-id').value = '';
+  document.getElementById('saas-plan-name').value = '';
+  document.getElementById('saas-plan-price').value = '';
+  document.getElementById('saas-plan-users').value = '';
+  document.getElementById('saas-plan-loans').value = '';
+  document.getElementById('saas-plan-error').classList.add('d-none');
+  document.getElementById('modal-saas-plan').classList.add('active');
+}
+
+document.getElementById('saas-plan-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const payload = {
+    id: document.getElementById('saas-plan-id').value.toLowerCase().replace(/\\s+/g, ''),
+    name: document.getElementById('saas-plan-name').value,
+    price: parseFloat(document.getElementById('saas-plan-price').value),
+    max_users: parseInt(document.getElementById('saas-plan-users').value, 10),
+    max_loans: parseInt(document.getElementById('saas-plan-loans').value, 10)
+  };
+  
+  const btn = e.target.querySelector('button[type="submit"]');
+  const errorEl = document.getElementById('saas-plan-error');
+  try {
+    btn.disabled = true;
+    await apiRequest('/saas/plans', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    closeModal('modal-saas-plan');
+    await loadSaasPlans();
+    lucide.createIcons();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function deleteSaasPlan(id) {
+  if (!confirm(`¿Estás seguro de eliminar el plan "${id}"?`)) return;
+  try {
+    await apiRequest(`/saas/plans/${id}`, { method: 'DELETE' });
+    await loadSaasPlans();
+    lucide.createIcons();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function openSaasEditCompany(companyId, companyName, currentPlan) {
+  document.getElementById('saas-edit-company-id').value = companyId;
+  document.getElementById('saas-edit-company-name-label').textContent = `Selecciona el nuevo plan para ${companyName}.`;
+  
+  const select = document.getElementById('saas-edit-company-plan');
+  select.innerHTML = currentSaasPlans.map(p => 
+    `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>${p.name} - ${formatCurrency(p.price)}/mes</option>`
+  ).join('');
+  
+  document.getElementById('saas-edit-company-error').classList.add('d-none');
+  document.getElementById('modal-saas-edit-company').classList.add('active');
+}
+
+document.getElementById('saas-edit-company-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const companyId = document.getElementById('saas-edit-company-id').value;
+  const plan = document.getElementById('saas-edit-company-plan').value;
+  
+  const btn = e.target.querySelector('button[type="submit"]');
+  const errorEl = document.getElementById('saas-edit-company-error');
+  try {
+    btn.disabled = true;
+    await apiRequest(`/saas/companies/${companyId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan })
+    });
+    closeModal('modal-saas-edit-company');
+    await loadSaasCompanies();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function openSaasDeleteCompany(companyId) {
+  if (companyId === 'comp_default') {
+    alert('No puedes eliminar la empresa principal.');
+    return;
+  }
+  document.getElementById('saas-delete-company-id').value = companyId;
+  document.getElementById('modal-saas-delete-company').classList.add('active');
+}
+
+document.getElementById('saas-delete-company-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const companyId = document.getElementById('saas-delete-company-id').value;
+  
+  const btn = e.target.querySelector('button[type="submit"]');
+  try {
+    btn.disabled = true;
+    await apiRequest(`/saas/companies/${companyId}`, {
+      method: 'DELETE'
+    });
+    closeModal('modal-saas-delete-company');
+    await loadSaasCompanies();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function openSaasPayModal(companyId, companyName) {
   document.getElementById('saas-pay-company-id').value = companyId;
