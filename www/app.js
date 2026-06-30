@@ -58,6 +58,22 @@ async function loadData() {
     return;
   }
   try {
+    const isSuperAdmin = localStorage.getItem('prestamos_is_superadmin') === '1';
+    
+    if (isSuperAdmin) {
+      document.getElementById('login-screen').classList.remove('active');
+      document.getElementById('app-wrapper').classList.remove('d-none');
+      
+      // Ocultar barra lateral y botón de menú
+      document.querySelector('.sidebar').classList.add('d-none');
+      document.getElementById('menu-btn').classList.add('d-none');
+      
+      // Mostrar solo el dashboard global
+      switchSection('superadmin');
+      await loadSaasCompanies();
+      return;
+    }
+
     const [clients, loans] = await Promise.all([
       apiRequest('/clients'),
       apiRequest('/loans')
@@ -102,6 +118,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error || 'Error de autenticación');
     
     localStorage.setItem('prestamos_auth_token', data.token);
+    if (data.isSuperAdmin) {
+      localStorage.setItem('prestamos_is_superadmin', '1');
+    } else {
+      localStorage.removeItem('prestamos_is_superadmin');
+    }
     errorEl.classList.add('d-none');
     loadData();
   } catch (err) {
@@ -1999,3 +2020,96 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inicializar Lucide Icons
   lucide.createIcons();
 });
+
+// --- SaaS Super Admin Functions ---
+
+async function loadSaasCompanies() {
+  try {
+    const companies = await apiRequest('/saas/companies');
+    const tbody = document.getElementById('saas-companies-table');
+    tbody.innerHTML = '';
+    
+    companies.forEach(c => {
+      const isSuspended = c.status === 'suspended';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${c.name}</strong></td>
+        <td><span class="badge" style="background:var(--primary); color:white; padding:0.2rem 0.5rem; border-radius:12px;">${c.plan.toUpperCase()}</span></td>
+        <td>
+          <span class="badge" style="background:${isSuspended ? 'var(--danger)' : 'var(--success)'}; color:white; padding:0.2rem 0.5rem; border-radius:12px;">
+            ${isSuspended ? 'Suspendida' : 'Activa'}
+          </span>
+        </td>
+        <td>${c.validUntil || 'Ilimitado'}</td>
+        <td>${c.userCount} / ${c.loanCount}</td>
+        <td>
+          <button class="btn btn-sm btn-success" onclick="openSaasPayModal('${c.id}', '${c.name.replace(/'/g, "\\'")}')" title="Registrar Pago">
+            <i data-lucide="dollar-sign"></i>
+          </button>
+          <button class="btn btn-sm ${isSuspended ? 'btn-primary' : 'btn-danger'}" onclick="toggleSaasStatus('${c.id}', '${isSuspended ? 'active' : 'suspended'}')" title="${isSuspended ? 'Reactivar' : 'Suspender'}">
+            <i data-lucide="${isSuspended ? 'check-circle' : 'ban'}"></i>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    
+    lucide.createIcons();
+  } catch(e) {
+    console.error(e);
+    alert('Error cargando empresas SaaS: ' + e.message);
+  }
+}
+
+function openSaasPayModal(companyId, companyName) {
+  document.getElementById('saas-pay-company-id').value = companyId;
+  document.getElementById('saas-pay-company-name').value = companyName;
+  document.getElementById('saas-pay-amount').value = '';
+  document.getElementById('saas-pay-months').value = '1';
+  document.getElementById('saas-pay-notes').value = '';
+  document.getElementById('saas-pay-error').classList.add('d-none');
+  document.getElementById('modal-saas-pay').classList.add('active');
+}
+
+document.getElementById('saas-pay-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const companyId = document.getElementById('saas-pay-company-id').value;
+  const amount = parseFloat(document.getElementById('saas-pay-amount').value);
+  const months = parseInt(document.getElementById('saas-pay-months').value, 10);
+  const notes = document.getElementById('saas-pay-notes').value;
+  
+  const btn = e.target.querySelector('button[type="submit"]');
+  const errorEl = document.getElementById('saas-pay-error');
+  
+  try {
+    btn.disabled = true;
+    errorEl.classList.add('d-none');
+    
+    await apiRequest('/saas/payments', {
+      method: 'POST',
+      body: JSON.stringify({ targetCompanyId: companyId, amount, months, notes })
+    });
+    
+    closeModal('modal-saas-pay');
+    await loadSaasCompanies();
+  } catch(err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function toggleSaasStatus(companyId, newStatus) {
+  if (!confirm(`¿Estás seguro de que deseas marcar esta empresa como ${newStatus === 'active' ? 'ACTIVA' : 'SUSPENDIDA'}?`)) return;
+  
+  try {
+    await apiRequest(`/saas/companies/${companyId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: newStatus })
+    });
+    await loadSaasCompanies();
+  } catch(err) {
+    alert('Error actualizando estado: ' + err.message);
+  }
+}

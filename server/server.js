@@ -63,9 +63,20 @@ CREATE TABLE IF NOT EXISTS companies (
   name TEXT NOT NULL,
   plan TEXT NOT NULL DEFAULT 'basico',
   status TEXT NOT NULL DEFAULT 'active',
+  validUntil TEXT,
   max_loans INTEGER NOT NULL DEFAULT 500,
   max_users INTEGER NOT NULL DEFAULT 2,
   createdAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS saas_payments (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  amount REAL NOT NULL,
+  months INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  notes TEXT,
+  FOREIGN KEY (companyId) REFERENCES companies(id)
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -143,8 +154,8 @@ db.exec(initSql, async err => {
     db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
       if (!err && row.count === 0) {
         const defaultCompanyId = 'comp_default';
-        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
+        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [defaultCompanyId, 'Administración Central', 'premium', 'active', '2099-12-31', 9999, 9999, new Date().toISOString()], (err) => {
             if (!err) {
               const stmt = db.prepare("INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)");
               stmt.run("admin", defaultHash, defaultCompanyId);
@@ -156,8 +167,8 @@ db.exec(initSql, async err => {
       } else {
         // Migration: Ensure legacy users have a companyId
         const defaultCompanyId = 'comp_default';
-        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
+        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [defaultCompanyId, 'Administración Central', 'premium', 'active', '2099-12-31', 9999, 9999, new Date().toISOString()], (err) => {
             // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
             const tablesToMigrate = ['users', 'clients', 'loans', 'instalments', 'payments', 'settings'];
             tablesToMigrate.forEach(table => {
@@ -173,6 +184,13 @@ db.exec(initSql, async err => {
             // Añadir resetToken
             db.run("ALTER TABLE users ADD COLUMN resetToken TEXT", () => {});
             db.run("ALTER TABLE users ADD COLUMN resetTokenExpires TEXT", () => {});
+            
+            // Añadir validUntil a companies
+            db.run("ALTER TABLE companies ADD COLUMN validUntil TEXT", () => {
+              // Update existing companies to have 30 days valid from today
+              const defaultValid = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+              db.run("UPDATE companies SET validUntil = ? WHERE validUntil IS NULL", [defaultValid]);
+            });
           }
         );
 
@@ -214,8 +232,9 @@ app.post('/api/signup', async (req, res) => {
   db.get('SELECT username FROM users WHERE username = ?', [username], (err, row) => {
     if (row) return res.status(400).json({ error: 'El usuario ya existe' });
     
-    const stmtC = db.prepare('INSERT INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    stmtC.run(companyId, companyName, plan, 'active', max_loans, max_users, new Date().toISOString(), (err) => {
+    const validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const stmtC = db.prepare('INSERT INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    stmtC.run(companyId, companyName, plan, 'active', validUntil, max_loans, max_users, new Date().toISOString(), (err) => {
       if (err) return res.status(500).json({ error: err.message });
       
       const stmtU = db.prepare('INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)');
@@ -269,7 +288,7 @@ app.post('/api/login', (req, res) => {
   username = username.trim(); // <-- Arreglo para celulares que añaden un espacio al final
   console.log(`[LOGIN ATTEMPT] username: '${username}', password: '${password}'`);
   
-  db.get("SELECT u.*, c.plan FROM users u JOIN companies c ON u.companyId = c.id WHERE u.username = ?", [username], async (err, row) => {
+  db.get("SELECT u.*, c.plan, c.status, c.validUntil FROM users u JOIN companies c ON u.companyId = c.id WHERE u.username = ?", [username], async (err, row) => {
     if (err) {
       console.log(`[LOGIN FAILED] DB Error:`, err.message);
       return res.status(500).json({ error: err.message });
@@ -277,6 +296,22 @@ app.post('/api/login', (req, res) => {
     if (!row) {
       console.log(`[LOGIN FAILED] User not found`);
       return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+    
+    // Check if company is active
+    const isSuperAdmin = row.username === 'admin' && row.companyId === 'comp_default';
+    if (!isSuperAdmin) {
+      if (row.status === 'suspended') {
+        return res.status(403).json({ error: 'La cuenta de su empresa se encuentra suspendida.' });
+      }
+      
+      // Check if subscription expired
+      if (row.validUntil) {
+        const today = new Date().toISOString().split('T')[0];
+        if (today > row.validUntil) {
+          return res.status(403).json({ error: 'Suscripción vencida. Por favor registre su pago para continuar.' });
+        }
+      }
     }
     
     const isMatch = await bcrypt.compare(password, row.password);
@@ -287,8 +322,8 @@ app.post('/api/login', (req, res) => {
     
     console.log(`[LOGIN SUCCESS] User: ${username}`);
     // Generate JWT token
-    const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, username });
+    const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan, isSuperAdmin }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, username, isSuperAdmin });
   });
 });
 
@@ -633,6 +668,75 @@ app.post('/api/payments', (req, res) => {
     });
   });
   stmt.finalize();
+});
+// --- SaaS Super Admin Endpoints ---
+function requireSuperAdmin(req, res, next) {
+  if (!req.user || req.user.username !== 'admin' || req.user.companyId !== 'comp_default') {
+    return res.status(403).json({ error: 'Acceso denegado. Solo Super Admin.' });
+  }
+  next();
+}
+
+app.get('/api/saas/companies', requireSuperAdmin, (req, res) => {
+  db.all(`
+    SELECT c.*, 
+      (SELECT COUNT(*) FROM users WHERE companyId = c.id) as userCount,
+      (SELECT COUNT(*) FROM clients WHERE companyId = c.id) as clientCount,
+      (SELECT COUNT(*) FROM loans WHERE companyId = c.id) as loanCount
+    FROM companies c
+    ORDER BY c.createdAt DESC
+  `, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/saas/payments', requireSuperAdmin, (req, res) => {
+  const { targetCompanyId, amount, months, notes } = req.body;
+  if (!targetCompanyId || !amount || !months) return res.status(400).json({ error: 'Faltan datos requeridos' });
+
+  const paymentId = generateId('spay');
+  const date = new Date().toISOString();
+
+  // 1. Insert payment record
+  const stmt = db.prepare('INSERT INTO saas_payments (id, companyId, amount, months, date, notes) VALUES (?,?,?,?,?,?)');
+  stmt.run(paymentId, targetCompanyId, amount, months, date, notes, function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // 2. Extend validUntil and activate if suspended
+    db.get('SELECT validUntil FROM companies WHERE id = ?', [targetCompanyId], (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      let currentValidUntil = new Date();
+      if (row && row.validUntil && new Date(row.validUntil) > currentValidUntil) {
+        currentValidUntil = new Date(row.validUntil);
+      }
+      
+      // Add 'months' months
+      currentValidUntil.setMonth(currentValidUntil.getMonth() + parseInt(months, 10));
+      const newValidUntil = currentValidUntil.toISOString().split('T')[0];
+
+      db.run('UPDATE companies SET validUntil = ?, status = "active" WHERE id = ?', [newValidUntil, targetCompanyId], (err2) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({ message: 'Pago registrado exitosamente', newValidUntil });
+      });
+    });
+  });
+  stmt.finalize();
+});
+
+app.put('/api/saas/companies/:id/status', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  const { status } = req.body; // 'active' or 'suspended'
+  
+  if (status !== 'active' && status !== 'suspended') {
+    return res.status(400).json({ error: 'Estado inválido' });
+  }
+
+  db.run('UPDATE companies SET status = ? WHERE id = ?', [status, targetCompanyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Estado actualizado correctamente' });
+  });
 });
 
 // Descargar Base de Datos

@@ -257,6 +257,36 @@
         </div>
       </header>
       
+      <!-- ================= PESTAÑA: SUPER ADMIN ================= -->
+      <section id="sec-superadmin" class="app-section d-none">
+        <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+          <div>
+            <h2 class="card-title" style="margin-bottom: 0.5rem;">Panel Global (Super Admin)</h2>
+            <p style="color: var(--text-muted);">Gestión de financieras y planes SaaS</p>
+          </div>
+        </div>
+        
+        <div class="card glass-effect">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Vence</th>
+                  <th>Usuarios / Préstamos</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="saas-companies-table">
+                <!-- Empresas renderizadas aquí -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- ================= PESTAÑA: DASHBOARD ================= -->
       <section id="sec-dashboard" class="app-section active">
         <!-- KPI Grid -->
@@ -949,11 +979,45 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: REGISTRAR PAGO SAAS ================= -->
+  <div id="modal-saas-pay" class="modal-overlay">
+    <div class="modal-container" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2 class="card-title">Registrar Pago Mensual</h2>
+        <button class="close-btn" onclick="closeModal('modal-saas-pay')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form id="saas-pay-form">
+        <div class="modal-body">
+          <input type="hidden" id="saas-pay-company-id">
+          <div class="form-group mb-4">
+            <label>Empresa</label>
+            <input type="text" id="saas-pay-company-name" disabled>
+          </div>
+          <div class="form-group mb-4">
+            <label for="saas-pay-amount">Monto Cobrado (RD$)</label>
+            <input type="number" id="saas-pay-amount" step="0.01" required>
+          </div>
+          <div class="form-group mb-4">
+            <label for="saas-pay-months">Meses a extender</label>
+            <input type="number" id="saas-pay-months" min="1" value="1" required>
+          </div>
+          <div class="form-group mb-4">
+            <label for="saas-pay-notes">Notas (Opcional)</label>
+            <input type="text" id="saas-pay-notes" placeholder="Ej. Pago en efectivo, Transferencia #1234">
+          </div>
+          <div id="saas-pay-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-saas-pay')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Pago</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- CONFIGURACIÓN PARA PLAY STORE / NUBE -->
-  <script>
-    // URL del backend en producción
-    window.PRESTAMOS_API_URL = 'https://mi-app-prestamos.onrender.com';
-  </script>
   
   <script src="app.js?v=2" defer></script>
 
