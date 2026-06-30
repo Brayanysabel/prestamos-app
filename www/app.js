@@ -64,9 +64,8 @@ async function loadData() {
       document.getElementById('login-screen').classList.remove('active');
       document.getElementById('app-wrapper').classList.remove('d-none');
       
-      // Ocultar barra lateral y botón de menú
+      // Ocultar barra lateral
       document.querySelector('.sidebar').classList.add('d-none');
-      document.getElementById('menu-btn').classList.add('d-none');
       
       // Mostrar solo el dashboard global
       switchSection('superadmin');
