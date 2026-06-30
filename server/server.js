@@ -26,8 +26,8 @@ const loginLimiter = rateLimit({
 
 // app.use('/api/login', loginLimiter); // Desactivado temporalmente para pruebas
 
-// Serve static files from the parent directory
-app.use(express.static(path.resolve(__dirname, '../')));
+// Serve static files from the www directory
+app.use(express.static(path.resolve(__dirname, '../www')));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
@@ -456,7 +456,7 @@ app.post('/api/backup/email', (req, res) => {
 
 // Clients
 app.get('/api/clients', (req, res) => {
-  db.all('SELECT * FROM clients WHERE companyId = ?', [], (err, rows) => {
+  db.all('SELECT * FROM clients WHERE companyId = ?', [req.user.companyId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
