@@ -141,10 +141,17 @@ db.exec(initSql, async err => {
     
     db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
       if (!err && row.count === 0) {
-        const stmt = db.prepare("INSERT INTO users (username, password) VALUES (?, ?)");
-        stmt.run("admin", defaultHash);
-        stmt.finalize();
-        console.log("Seeded default admin user with bcrypt.");
+        const defaultCompanyId = 'comp_default';
+        db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [defaultCompanyId, 'Administración Central', 'premium', 'active', 9999, 9999, new Date().toISOString()], (err) => {
+            if (!err) {
+              const stmt = db.prepare("INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)");
+              stmt.run("admin", defaultHash, defaultCompanyId);
+              stmt.finalize();
+              console.log("Seeded default admin user and company.");
+            }
+          }
+        );
       } else {
         // Migration: If any password does NOT start with '$2b$' (bcrypt signature), update it to 'admin' hashed
         db.run("UPDATE users SET password = ? WHERE password NOT LIKE '$2b$%'", [defaultHash], function(err) {
