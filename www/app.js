@@ -856,6 +856,7 @@ function renderRecentPayments() {
 
 // Gráfico: Estado de Préstamos
 function renderStatusChart(active, paid, overdue) {
+  if (typeof Chart === 'undefined') return; // Guard: Chart.js not loaded
   const ctx = document.getElementById('statusChart').getContext('2d');
   
   if (statusChartInstance) {
@@ -904,6 +905,7 @@ function renderStatusChart(active, paid, overdue) {
 
 // Gráfico: Recaudaciones por Mes
 function renderCollectionsChart(collectionsByMonth) {
+  if (typeof Chart === 'undefined') return; // Guard: Chart.js not loaded
   const ctx = document.getElementById('collectionsChart').getContext('2d');
   
   if (collectionsChartInstance) {
