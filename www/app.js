@@ -110,6 +110,10 @@ function showLogin() {
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('app-wrapper').classList.add('d-none');
 }
+// ============================================================
+// Toda la inicialización DOM se hace aquí, de forma segura
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
 
 // Lógica del formulario de login
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -2336,3 +2340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ============================================================
+// FIN del bloque DOMContentLoaded
+}); // end DOMContentLoaded
