@@ -5,16 +5,36 @@ const cors = require('cors');
 const path = require('path');
 const nodemailer = require('nodemailer');
 const helmet = require('helmet');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
+const dotenv = require('dotenv');
+const cookieParser = require('cookie-parser');
 
 const app = express();
-const PORT = process.env.PORT || 5050;
+dotenv.config({ path: path.resolve(__dirname, '../.env') });  // OK if file missing
+const PORT = process.env.PORT || 8080;
+const HOST = '0.0.0.0';
 
 // Security Middlewares
-app.use(helmet()); // Añade cabeceras de seguridad
-app.use(cors({ origin: '*' }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
+      styleSrc: ["'self'", "https:", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "https:", "data:"],
+      formAction: ["'self'"],
+      frameAncestors: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"]
+    }
+  }
+})); // Cabeceras de seguridad con CSP personalizado
+app.use(cookieParser());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // Rate Limiting para Login
@@ -27,18 +47,28 @@ const loginLimiter = rateLimit({
 // app.use('/api/login', loginLimiter); // Desactivado temporalmente para pruebas
 
 // Serve static files from the www directory
-app.use(express.static(path.resolve(__dirname, '../www')));
+// Serve static files from the www directory with caching for performance
+app.use(express.static(path.resolve(__dirname, './www'), {
+  maxAge: '1d',
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html') || path.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'public, max-age=0');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }
+}));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
 // Token auth middleware
 app.use('/api', (req, res, next) => {
-  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password'];
+  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health'];
   if (publicRoutes.includes(req.path) || req.method === 'OPTIONS') {
     return next();
   }
 
-  const token = req.headers['x-auth-token'];
+  const token = req.headers['x-auth-token'] || req.cookies?.auth_token;
   if (!token) {
     return res.status(401).json({ error: 'No autorizado / Token requerido' });
   }
@@ -154,10 +184,13 @@ CREATE TABLE IF NOT EXISTS saas_plans (
 `;
 
 db.exec(initSql, async err => {
+  console.log("Initializing DB schema...");
   if (err) console.error('Error initializing DB schema', err);
   else {
+    console.log("DB schema initialized successfully.");
     // Inicializar planes por defecto si no existen
     db.get("SELECT COUNT(*) as count FROM saas_plans", (err, row) => {
+      console.log("Checking saas_plans...");
       if (!err && row.count === 0) {
         const stmt = db.prepare("INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)");
         stmt.run('principiante', 'Principiante', 900, 1, 20);
@@ -192,7 +225,7 @@ db.exec(initSql, async err => {
             // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
             const tablesToMigrate = ['users', 'clients', 'loans', 'instalments', 'payments', 'settings'];
             tablesToMigrate.forEach(table => {
-              db.run(`ALTER TABLE ${table} ADD COLUMN companyId TEXT`, () => {
+              db.run(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS companyId TEXT`, () => {
                 db.run(`UPDATE ${table} SET companyId = ? WHERE companyId IS NULL`, [defaultCompanyId], function(err) {
                   if (!err && this.changes > 0) {
                     console.log(`Migrated ${this.changes} legacy records in ${table} to default company.`);
@@ -202,11 +235,11 @@ db.exec(initSql, async err => {
             });
             
             // Añadir resetToken
-            db.run("ALTER TABLE users ADD COLUMN resetToken TEXT", () => {});
-            db.run("ALTER TABLE users ADD COLUMN resetTokenExpires TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetToken TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetTokenExpires TEXT", () => {});
             
             // Añadir validUntil a companies
-            db.run("ALTER TABLE companies ADD COLUMN validUntil TEXT", () => {
+            db.run("ALTER TABLE companies ADD COLUMN IF NOT EXISTS validUntil TEXT", () => {
               // Update existing companies to have 30 days valid from today
               const defaultValid = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
               db.run("UPDATE companies SET validUntil = ? WHERE validUntil IS NULL", [defaultValid]);
@@ -215,7 +248,7 @@ db.exec(initSql, async err => {
         );
 
         // Migration: If any password does NOT start with '$2b$' (bcrypt signature), update it to 'admin' hashed
-        db.run("UPDATE users SET password = ? WHERE password NOT LIKE '$2b$%'", [defaultHash], function(err) {
+        db.run("UPDATE users SET password = ? WHERE password NOT LIKE ?", [defaultHash, '$2b$%'], function(err) {
           if (!err && this.changes > 0) {
             console.log(`Migrated ${this.changes} legacy plaintext passwords to secure bcrypt hashes.`);
           }
@@ -231,6 +264,11 @@ function generateId(prefix) {
 }
 
 // ----- API Endpoints ----- //
+
+// Health check endpoint (public, bypasses JWT verification thanks to publicRoutes array)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Signup (Crear nueva empresa)
 app.post('/api/signup', async (req, res) => {
@@ -343,8 +381,20 @@ app.post('/api/login', (req, res) => {
     console.log(`[LOGIN SUCCESS] User: ${username}`);
     // Generate JWT token
     const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan, isSuperAdmin }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ token, username, isSuperAdmin });
+    // Set HttpOnly cookie for authentication
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+    });
+    res.json({ username, isSuperAdmin, token });
   });
+});
+
+// Logout - Clear auth cookie
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('auth_token');
+  res.json({ message: 'Sesión cerrada correctamente' });
 });
 
 
@@ -831,15 +881,216 @@ app.delete('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
   });
 });
 
-// Descargar Base de Datos
+// Descargar Base de Datos (solo disponible en entorno de desarrollo)
 app.get('/api/backup/download', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'No disponible en producción' });
+  }
   const username = req.user?.username;
   if (!username) return res.status(401).json({ error: 'No autorizado' });
+  if (!password) return res.status(400).json({ error: 'Se requiere contraseña para borrar' });
+
+  db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(403).json({ error: 'Usuario no encontrado' });
+    
+    const isMatch = await bcrypt.compare(password, row.password);
+    if (!isMatch) {
+      return res.status(403).json({ error: 'Contraseña incorrecta' });
+    }
+
+    // Si la contraseña es correcta, borrar todo lo relacionado al préstamo
+    db.run("DELETE FROM payments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
+      db.run("DELETE FROM instalments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
+        db.run("DELETE FROM loans WHERE id = ? AND companyId = ?", [loanId], (err) => {
+          if (err) return res.status(500).json({ error: err.message });
+          res.json({ message: 'Préstamo eliminado exitosamente' });
+        });
+      });
+    });
+  });
+});
+
+// Payments
+app.post('/api/payments', (req, res) => {
+  const { loanId, instalmentIdx, amount, date } = req.body; // date format YYYY-MM-DD
+  const paymentId = generateId('pay');
+  const companyId = req.user.companyId;
+  const stmt = db.prepare('INSERT INTO payments (id, companyId, loanId, instalmentIdx, amount, date) VALUES (?,?,?,?,?,?)');
+  stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    // Update instalment paid and possibly status
+    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
+      if (err2) return res.status(500).json({ error: err2.message });
+      // Recalculate remaining balance for loan
+      db.get('SELECT SUM(amount - paid) AS remain FROM instalments WHERE loanId = ?', [loanId], (err3, row) => {
+        if (err3) return res.status(500).json({ error: err3.message });
+        const remaining = row.remain || 0;
+        const newStatus = remaining === 0 ? 'paid' : 'active';
+        db.run('UPDATE loans SET remainingBalance = ?, status = ? WHERE id = ?', [remaining, newStatus, loanId]);
+        res.json({ paymentId });
+      });
+    });
+  });
+  stmt.finalize();
+});
+// --- SaaS Super Admin Endpoints ---
+function requireSuperAdmin(req, res, next) {
+  if (!req.user || req.user.username !== 'admin' || req.user.companyId !== 'comp_default') {
+    return res.status(403).json({ error: 'Acceso denegado. Solo Super Admin.' });
+  }
+  next();
+}
+
+app.get('/api/saas/companies', requireSuperAdmin, (req, res) => {
+  db.all(`
+    SELECT c.*, 
+      (SELECT COUNT(*) FROM users WHERE companyId = c.id) as userCount,
+      (SELECT COUNT(*) FROM clients WHERE companyId = c.id) as clientCount,
+      (SELECT COUNT(*) FROM loans WHERE companyId = c.id) as loanCount
+    FROM companies c
+    ORDER BY c.createdAt DESC
+  `, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/saas/payments', requireSuperAdmin, (req, res) => {
+  const { targetCompanyId, amount, months, notes } = req.body;
+  if (!targetCompanyId || !amount || !months) return res.status(400).json({ error: 'Faltan datos requeridos' });
+
+  const paymentId = generateId('spay');
+  const date = new Date().toISOString();
+
+  // 1. Insert payment record
+  const stmt = db.prepare('INSERT INTO saas_payments (id, companyId, amount, months, date, notes) VALUES (?,?,?,?,?,?)');
+  stmt.run(paymentId, targetCompanyId, amount, months, date, notes, function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+
+    // 2. Extend validUntil and activate if suspended
+    db.get('SELECT validUntil FROM companies WHERE id = ?', [targetCompanyId], (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      let currentValidUntil = new Date();
+      if (row && row.validUntil && new Date(row.validUntil) > currentValidUntil) {
+        currentValidUntil = new Date(row.validUntil);
+      }
+      
+      // Add 'months' months
+      currentValidUntil.setMonth(currentValidUntil.getMonth() + parseInt(months, 10));
+      const newValidUntil = currentValidUntil.toISOString().split('T')[0];
+
+      db.run('UPDATE companies SET validUntil = ?, status = "active" WHERE id = ?', [newValidUntil, targetCompanyId], (err2) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({ message: 'Pago registrado exitosamente', newValidUntil });
+      });
+    });
+  });
+  stmt.finalize();
+});
+
+app.put('/api/saas/companies/:id/status', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  const { status } = req.body; // 'active' or 'suspended'
   
-  const dbPath = path.join(__dirname, '..', 'data', 'prestamos.db');
+  if (status !== 'active' && status !== 'suspended') {
+    return res.status(400).json({ error: 'Estado inválido' });
+  }
+
+  db.run('UPDATE companies SET status = ? WHERE id = ?', [status, targetCompanyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Estado actualizado correctamente' });
+  });
+});
+
+app.put('/api/saas/companies/:id/plan', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  const { plan } = req.body;
+  if (!plan) return res.status(400).json({ error: 'Falta el plan' });
+
+  // Update company plan
+  db.run('UPDATE companies SET plan = ? WHERE id = ?', [plan, targetCompanyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan actualizado correctamente' });
+  });
+});
+
+app.delete('/api/saas/companies/:id', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  if (targetCompanyId === 'comp_default') {
+    return res.status(400).json({ error: 'No se puede eliminar la empresa principal' });
+  }
+
+  // Delete everything related to this company
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    db.run('DELETE FROM settings WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM payments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM instalments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM loans WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM clients WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM users WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM saas_payments WHERE companyId = ?', [targetCompanyId]);
+    db.run('DELETE FROM companies WHERE id = ?', [targetCompanyId], function(err) {
+      if (err) {
+        db.run('ROLLBACK');
+        return res.status(500).json({ error: err.message });
+      }
+      db.run('COMMIT');
+      res.json({ message: 'Empresa eliminada por completo' });
+    });
+  });
+});
+
+// SaaS Plans CRUD
+app.get('/api/saas/plans', requireSuperAdmin, (req, res) => {
+  db.all('SELECT * FROM saas_plans ORDER BY price ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/saas/plans', requireSuperAdmin, (req, res) => {
+  const { id, name, price, max_users, max_loans } = req.body;
+  db.run('INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)', 
+    [id, name, price, max_users, max_loans], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan creado', id });
+  });
+});
+
+app.put('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
+  const { name, price, max_users, max_loans } = req.body;
+  db.run('UPDATE saas_plans SET name = ?, price = ?, max_users = ?, max_loans = ? WHERE id = ?', 
+    [name, price, max_users, max_loans, req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan actualizado' });
+  });
+});
+
+app.delete('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
+  db.run('DELETE FROM saas_plans WHERE id = ?', [req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Plan eliminado' });
+  });
+});
+
+// Descargar Base de Datos (solo disponible en entorno de desarrollo)
+app.get('/api/backup/download', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'No disponible en producción' });
+  }
+  const username = req.user?.username;
+  if (!username) return res.status(401).json({ error: 'No autorizado' });
+  const dataDir = path.join(__dirname, '..', 'data');
+  const dbPath = path.join(dataDir, 'prestamos.db');
   res.download(dbPath, `respaldo_prestamos_${new Date().toISOString().split('T')[0]}.db`);
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
+
+process.on('uncaughtException', err => { console.error('Uncaught Exception', err); });
+process.on('unhandledRejection', err => { console.error('Unhandled Rejection', err); });
