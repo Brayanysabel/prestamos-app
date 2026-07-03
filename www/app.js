@@ -4,14 +4,112 @@
 function safeCreateIcons() {
   try {
     if (typeof lucide !== 'undefined' && lucide && typeof lucide.createIcons === 'function') {
-      safeCreateIcons();
+      lucide.createIcons();
     }
   } catch(e) {
     // silenciar error si lucide no está disponible
   }
 }
 
-// --- 1. ESTADO DE LA APLICACIÓN ---
+
+// ---------------------------------------------------
+// 3️⃣  Auto‑close app when it goes to background (Android/Capacitor)
+// ---------------------------------------------------
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  // Detect when the app is sent to background (pause) and exit immediately.
+  window.Capacitor.Plugins.App.addListener('pause', () => {
+    console.log('[AutoClose] App paused – exiting');
+    window.Capacitor.Plugins.App.exitApp();
+  });
+
+  // Also listen to generic app state changes (foreground/background).
+  window.Capacitor.Plugins.App.addListener('appStateChange', ({ isActive }) => {
+    if (!isActive) {
+      console.log('[AutoClose] App lost focus – exiting');
+      window.Capacitor.Plugins.App.exitApp();
+    }
+  });
+}
+
+// ---------------------------------------------------
+// 4️⃣  Inactivity timeout (optional): close after 5 minutes of no interaction
+// ---------------------------------------------------
+let inactivityTimer;
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  // 5 minutes = 300 000 ms
+  inactivityTimer = setTimeout(() => {
+    console.log('[AutoClose] Inactivity timeout – exiting');
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.exitApp();
+    }
+  }, 300000);
+}
+// Initialize Auto-Close Settings UI
+const autoCloseToggle = document.getElementById('auto-close-toggle');
+const autoCloseTimeoutInput = document.getElementById('auto-close-timeout');
+
+// Load saved settings
+const savedAutoCloseEnabled = localStorage.getItem('autoCloseEnabled') === 'true';
+const savedAutoCloseTimeout = parseInt(localStorage.getItem('autoCloseTimeout') || '5', 10);
+autoCloseToggle.checked = savedAutoCloseEnabled;
+autoCloseTimeoutInput.value = savedAutoCloseTimeout;
+
+function updateInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  if (!autoCloseToggle.checked) return; // disabled
+  const timeoutMs = Math.max(60, autoCloseTimeoutInput.value) * 60000; // minutes to ms, min 1 min
+  inactivityTimer = setTimeout(() => {
+    console.log('[AutoClose] Inactivity timeout – exiting');
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.exitApp();
+    }
+  }, timeoutMs);
+}
+
+// Reset timer on any user interaction if enabled
+['click', 'touchstart', 'keydown', 'mousemove'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    if (autoCloseToggle.checked) {
+      resetInactivityTimer();
+    }
+  });
+});
+
+// Listen for settings changes
+autoCloseToggle.addEventListener('change', () => {
+  localStorage.setItem('autoCloseEnabled', autoCloseToggle.checked);
+  updateInactivityTimer();
+});
+autoCloseTimeoutInput.addEventListener('change', () => {
+  const mins = Math.max(1, parseInt(autoCloseTimeoutInput.value, 10) || 5);
+  autoCloseTimeoutInput.value = mins;
+  localStorage.setItem('autoCloseTimeout', mins);
+  updateInactivityTimer();
+});
+
+// Initialize timer based on saved settings
+resetInactivityTimer();
+updateInactivityTimer();
+
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  window.Capacitor.Plugins.App.addListener('backButton', () => {
+    const isLoginActive = document.getElementById('login-screen').classList.contains('active');
+    const isAppWrapperActive = !document.getElementById('app-wrapper').classList.contains('d-none');
+    const activeModales = document.querySelectorAll('.modal-overlay.active');
+    
+    if (isLoginActive || (isAppWrapperActive && activeModales.length === 0)) {
+      window.Capacitor.Plugins.App.exitApp();
+    } else if (activeModales.length > 0) {
+      // Si hay modales abiertos, cerramos el último modal abierto
+      const lastModal = activeModales[activeModales.length - 1];
+      closeModal(lastModal.id);
+    } else {
+      window.history.back();
+    }
+  });
+}
+
 let state = {
   clients: [],
   loans: [],
@@ -35,23 +133,23 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-const API_URL = window.PRESTAMOS_API_URL || '/api';
+let API_URL = localStorage.getItem('apiUrl') || window.PRESTAMOS_API_URL || 'https://prestamos-backend-production-1c7d.up.railway.app/api';
+
 
 function getAuthToken() {
-  return localStorage.getItem('prestamos_auth_token');
+  return sessionStorage.getItem('prestamos_auth_token');
 }
 
 async function apiRequest(endpoint, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(token && { 'X-Auth-Token': token }),
+    ...(token ? { 'X-Auth-Token': token } : {}),
     ...options.headers
   };
   
-  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers, credentials: 'include' });
   if (response.status === 401) {
-    localStorage.removeItem('prestamos_auth_token');
     showLogin();
     throw new Error('No autorizado');
   }
@@ -64,12 +162,9 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 async function loadData() {
-  if (!getAuthToken()) {
-    showLogin();
-    return;
-  }
+  // Auth is now cookie-based; we try to load data and if 401, showLogin is called by apiRequest
   try {
-    const isSuperAdmin = localStorage.getItem('prestamos_is_superadmin') === '1';
+    const isSuperAdmin = sessionStorage.getItem('prestamos_is_superadmin') === '1';
     
     if (isSuperAdmin) {
       document.getElementById('login-screen').classList.remove('active');
@@ -113,7 +208,7 @@ function showLogin() {
 // ============================================================
 // Toda la inicialización DOM se hace aquí, de forma segura
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
+
 
 // Lógica del formulario de login
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -126,16 +221,21 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const res = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user, password: pass })
+      body: JSON.stringify({ username: user, password: pass }),
+      credentials: 'include'
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error de autenticación');
     
-    localStorage.setItem('prestamos_auth_token', data.token);
+    // Store JWT token locally for mobile clients
+    if (data.token) {
+      sessionStorage.setItem('prestamos_auth_token', data.token);
+    }
+    
     if (data.isSuperAdmin) {
-      localStorage.setItem('prestamos_is_superadmin', '1');
+      sessionStorage.setItem('prestamos_is_superadmin', '1');
     } else {
-      localStorage.removeItem('prestamos_is_superadmin');
+      sessionStorage.removeItem('prestamos_is_superadmin');
     }
     errorEl.classList.add('d-none');
     loadData();
@@ -146,11 +246,26 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 });
 
 // Lógica de Cerrar Sesión
-document.getElementById('logout-btn').addEventListener('click', () => {
-  localStorage.removeItem('prestamos_auth_token');
-  localStorage.removeItem('prestamos_is_superadmin');
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  // Clear HttpOnly cookie via server endpoint
+  try {
+    await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
+  } catch(e) { /* ignore */ }
+  sessionStorage.removeItem('prestamos_is_superadmin');
+  sessionStorage.removeItem('prestamos_auth_token');
   showLogin();
 });
+
+if (document.getElementById('logout-btn-saas')) {
+  document.getElementById('logout-btn-saas').addEventListener('click', async () => {
+    try {
+      await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
+    } catch(e) { /* ignore */ }
+    sessionStorage.removeItem('prestamos_is_superadmin');
+    sessionStorage.removeItem('prestamos_auth_token');
+    showLogin();
+  });
+}
 
 // Lógica para mostrar/ocultar pantalla de registro
 document.getElementById('show-signup-btn').addEventListener('click', () => {
@@ -1655,7 +1770,7 @@ if (changeCredentialsForm) {
       errorEl.classList.add('d-none');
       
       // Forzar cierre de sesión
-      localStorage.removeItem('prestamos_auth_token');
+      sessionStorage.removeItem('prestamos_auth_token');
       showLogin();
     } catch (err) {
       errorEl.textContent = err.message;
@@ -1844,6 +1959,7 @@ async function loadSettings() {
     if (document.getElementById('company-address-input')) document.getElementById('company-address-input').value = settings.companyAddress || '';
     if (document.getElementById('currency-symbol-input')) document.getElementById('currency-symbol-input').value = settings.currencySymbol || '$';
     if (document.getElementById('default-interest-input')) document.getElementById('default-interest-input').value = settings.defaultInterest || '';
+    if (document.getElementById('settings-api-url')) document.getElementById('settings-api-url').value = localStorage.getItem('apiUrl') || '';
     
     // Auto-completar tasa de interés por defecto en la calculadora
     const calcRate = document.getElementById('calc-rate');
@@ -2233,11 +2349,10 @@ async function toggleSaasStatus(companyId, newStatus) {
   }
 }
 
-// Registrar todos los eventos de los formularios SaaS de forma segura
-document.addEventListener('DOMContentLoaded', () => {
-  const saasPayForm = document.getElementById('saas-pay-form');
-  if (saasPayForm) {
-    saasPayForm.addEventListener('submit', async (e) => {
+// Registrar todos los eventos de los formularios SaaS
+const saasPayForm = document.getElementById('saas-pay-form');
+if (saasPayForm) {
+  saasPayForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const companyId = document.getElementById('saas-pay-company-id').value;
       const amount = parseFloat(document.getElementById('saas-pay-amount').value);
@@ -2339,8 +2454,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-});
 
-// ============================================================
-// FIN del bloque DOMContentLoaded
-}); // end DOMContentLoaded
+// --- CONFIGURACIÓN DE CONEXIÓN A API ---
+const apiConnectionForm = document.getElementById('api-connection-form');
+if (apiConnectionForm) {
+  apiConnectionForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const urlInput = document.getElementById('settings-api-url').value.trim();
+    const msgEl = document.getElementById('api-connection-msg');
+    
+    let url = urlInput;
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    if (url.endsWith('/')) {
+      url = url.slice(0, -1);
+    }
+    
+    localStorage.setItem('apiUrl', url);
+    API_URL = url;
+    
+    msgEl.textContent = 'Servidor guardado correctamente. Recargando...';
+    msgEl.style.color = 'var(--success)';
+    
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  });
+}
+
+const testApiUrlBtn = document.getElementById('test-api-url-btn');
+if (testApiUrlBtn) {
+  testApiUrlBtn.addEventListener('click', async () => {
+    const urlInput = document.getElementById('settings-api-url').value.trim();
+    const msgEl = document.getElementById('api-connection-msg');
+    if (!urlInput) {
+      msgEl.textContent = 'Por favor ingresa una URL válida.';
+      msgEl.style.color = 'var(--danger)';
+      return;
+    }
+    
+    let url = urlInput;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    if (url.endsWith('/')) {
+      url = url.slice(0, -1);
+    }
+    
+    msgEl.textContent = 'Probando conexión...';
+    msgEl.style.color = 'var(--text-muted)';
+    testApiUrlBtn.disabled = true;
+    
+    try {
+      const response = await fetch(`${url}/api/health`, { method: 'GET' });
+      const data = await response.json();
+      if (response.ok && data.status === 'ok') {
+        msgEl.textContent = 'Conexión exitosa con el servidor.';
+        msgEl.style.color = 'var(--success)';
+      } else {
+        msgEl.textContent = 'Respuesta inesperada del servidor.';
+        msgEl.style.color = 'var(--warning)';
+      }
+    } catch (err) {
+      msgEl.textContent = 'No se pudo conectar al servidor: ' + err.message;
+      msgEl.style.color = 'var(--danger)';
+    } finally {
+      testApiUrlBtn.disabled = false;
+    }
+  });
+}
+
+// FIN del script
