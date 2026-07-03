@@ -1136,17 +1136,22 @@
 
   <!-- CONFIGURACIÓN PARA PLAY STORE / NUBE -->
   
-  <script src="app.js?v=9" defer></script>
+  <script src="app.js?v=11"></script>
 
-  <!-- Registro del Service Worker -->
+  <!-- Limpieza Forzosa de Caché y Service Worker Antiguo -->
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(registration => {
-          console.log('ServiceWorker registrado con éxito: ', registration.scope);
-        }).catch(err => {
-          console.log('Registro de ServiceWorker falló: ', err);
-        });
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister().then(function(boolean) {
+            console.log('Service Worker antiguo desinstalado para prevenir errores de caché.', boolean);
+          });
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (let name of names) caches.delete(name);
       });
     }
   </script>

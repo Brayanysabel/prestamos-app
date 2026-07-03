@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Diagnóstico</title>
+<script src="chart.min.js"></script>
+<script src="lucide.min.js"></script>
+</head>
+<body>
+<h2>Resultado:</h2>
+<pre id="out" style="font-size:16px; background:#f4f4f4; padding:1rem;"></pre>
+<script defer src="app.js?v=8"></script>
+<script defer>
+// Este script corre DESPUÉS de app.js por el defer
+document.addEventListener('DOMContentLoaded', function() {
+  var out = [];
+  out.push('Chart: ' + typeof Chart);
+  out.push('lucide: ' + typeof lucide);
+  out.push('openSaasPayModal: ' + typeof window.openSaasPayModal);
+  out.push('toggleSaasStatus: ' + typeof window.toggleSaasStatus);
+  out.push('openSaasEditCompany: ' + typeof window.openSaasEditCompany);
+  out.push('openSaasDeleteCompany: ' + typeof window.openSaasDeleteCompany);
+  out.push('closeModal: ' + typeof window.closeModal);
+  out.push('apiRequest: ' + typeof window.apiRequest);
+  out.push('loadSaasCompanies: ' + typeof window.loadSaasCompanies);
+  document.getElementById('out').textContent = out.join('\n');
+  
+  // Intentar llamar la funcion directamente
+  try {
+    // simular un click de Cobrar
+    window.openSaasPayModal('test', 'Test Company');
+    out.push('openSaasPayModal: FUNCIONA');
+  } catch(e) {
+    out.push('openSaasPayModal ERROR: ' + e.message);
+  }
+  document.getElementById('out').textContent = out.join('\n');
+});
+
+window.onerror = function(msg, src, line, col, err) {
+  var out = document.getElementById('out');
+  out.textContent += '\n\nERROR GLOBAL: ' + msg + ' (linea ' + line + ')';
+};
+</script>
+</body>
+</html>
