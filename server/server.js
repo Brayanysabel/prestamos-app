@@ -588,6 +588,37 @@ app.post('/api/notify', authenticateToken, async (req, res) => {
   }
 });
 
+// Users Management
+app.get('/api/users', (req, res) => {
+  db.all('SELECT username, companyId FROM users WHERE companyId = ?', [req.user.companyId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/api/users', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username y password requeridos' });
+  
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    db.run('INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)',
+      [username, hash, req.user.companyId],
+      function (err) {
+        if (err) {
+          if (err.message.includes('UNIQUE constraint failed') || err.code === '23505') {
+            return res.status(400).json({ error: 'El usuario ya existe' });
+          }
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ message: 'Usuario creado exitosamente', username });
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Clients
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients WHERE companyId = ?', [req.user.companyId], (err, rows) => {

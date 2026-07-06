@@ -469,6 +469,48 @@
         </div>
         <div class="card">
           <div class="card-header">
+            <span class="card-title">Gestión de Usuarios (Empleados)</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Añade usuarios adicionales para que puedan acceder y gestionar los préstamos de esta misma empresa.
+          </p>
+          <form id="add-user-form">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="new-user-username">Nombre de Usuario</label>
+                <input type="text" id="new-user-username" placeholder="Ej. juan.perez" required>
+              </div>
+              <div class="form-group">
+                <label for="new-user-password">Contraseña</label>
+                <input type="password" id="new-user-password" placeholder="••••••••" required>
+              </div>
+            </div>
+            <div id="add-user-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+            <button type="submit" class="btn btn-primary" style="margin-bottom: 1.5rem;">
+              <i data-lucide="user-plus"></i> Añadir Usuario
+            </button>
+          </form>
+          
+          <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text);">Usuarios Registrados</h3>
+            <div class="table-responsive">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Usuario</th>
+                    <th>ID Empresa</th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody">
+                  <!-- Usuarios cargados por JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <span class="card-title">Copias de Seguridad (Backup)</span>
           </div>
           <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">

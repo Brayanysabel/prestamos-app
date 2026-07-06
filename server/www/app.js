@@ -412,6 +412,10 @@ function switchSection(targetSectionId) {
     sectionSubtitle.textContent = meta.subtitle;
   }
   
+  if (targetSectionId === 'settings') {
+    loadUsers();
+  }
+  
   // Actualizar datos de la sección específica
   if (targetSectionId === 'dashboard') {
     renderDashboard();
@@ -1509,6 +1513,65 @@ if (emailBackupForm) {
       lucide.createIcons();
     }
   });
+}
+
+// --- GESTIÓN DE USUARIOS ---
+const addUserForm = document.getElementById('add-user-form');
+if (addUserForm) {
+  addUserForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const usernameInput = document.getElementById('new-user-username');
+    const passwordInput = document.getElementById('new-user-password');
+    const msgEl = document.getElementById('add-user-msg');
+    
+    msgEl.textContent = 'Añadiendo...';
+    msgEl.style.color = 'var(--text-muted)';
+    
+    try {
+      await apiRequest('/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: usernameInput.value,
+          password: passwordInput.value
+        })
+      });
+      
+      msgEl.textContent = 'Usuario añadido exitosamente.';
+      msgEl.style.color = 'var(--success)';
+      addUserForm.reset();
+      loadUsers(); // Recargar la lista
+    } catch (err) {
+      msgEl.textContent = err.message || 'Error al añadir usuario.';
+      msgEl.style.color = 'var(--danger)';
+    }
+  });
+}
+
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  
+  try {
+    const users = await apiRequest('/users');
+    tbody.innerHTML = '';
+    
+    if (users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
+      return;
+    }
+    
+    users.forEach(user => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${user.username}</strong></td>
+        <td><span style="font-size: 0.8rem; color: var(--text-muted);">${user.companyId}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Error cargando usuarios:', err);
+    tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
+  }
 }
 
 // --- INSTALACIÓN DE LA PWA ---
