@@ -561,6 +561,33 @@ app.post('/api/backup/email', (req, res) => {
   });
 });
 
+// Enviar notificación general por correo
+app.post('/api/notify', authenticateToken, async (req, res) => {
+  const { toEmail, subject, text, html, smtpUser, smtpPass } = req.body;
+  if (!smtpUser || !smtpPass) return res.status(400).json({ error: 'Faltan credenciales SMTP.' });
+  if (!toEmail) return res.status(400).json({ error: 'Falta correo destino.' });
+  
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: smtpUser, pass: smtpPass }
+    });
+    
+    await transporter.sendMail({
+      from: smtpUser,
+      to: toEmail,
+      subject: subject,
+      text: text,
+      html: html
+    });
+    
+    res.json({ success: true, message: 'Correo enviado correctamente' });
+  } catch (err) {
+    console.error('Error enviando correo:', err);
+    res.status(500).json({ error: 'Error enviando correo: ' + err.message });
+  }
+});
+
 // Clients
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients WHERE companyId = ?', [req.user.companyId], (err, rows) => {

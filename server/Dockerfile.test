@@ -1,0 +1,13 @@
+# Use a lightweight node image
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy only what we need (no npm install needed - only built-in modules)
+COPY server_test.js ./
+
+ENV NODE_ENV=production
+
+EXPOSE 8080
+
+CMD ["node", "server_test.js"]

@@ -958,7 +958,11 @@ function renderClientsTable() {
           ${activeLoans} activos, ${historicalLoans} finalizados
         </span>
       </td>
-      <td>${client.phone}</td>
+      <td>
+        <a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;">
+          <i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}
+        </a>
+      </td>
       <td>${client.email}</td>
       <td style="font-family: var(--font-mono); text-align: center;">${count}</td>
       <td class="number-cell text-right" style="font-weight: 600; color: ${debt > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(debt)}</td>
@@ -1003,7 +1007,7 @@ function viewClientDetail(id) {
   if (!client) return;
   
   document.getElementById('client-detail-name').textContent = client.name;
-  document.getElementById('client-detail-phone').textContent = client.phone;
+  document.getElementById('client-detail-phone').innerHTML = `<a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;"><i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}</a>`;
   document.getElementById('client-detail-email').textContent = client.email;
   
   const debt = getClientActiveDebt(id);
@@ -1163,9 +1167,17 @@ function viewLoanDetail(loanId) {
         <i data-lucide="hand-coins" style="width: 12px; height: 12px;"></i> Cobrar
       </button>`;
     } else {
-      actionBtn = `<button class="btn btn-secondary btn-sm" disabled>
-        <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
-      </button>`;
+      actionBtn = `<div style="display:flex;gap:4px;justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm" disabled>
+          <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="printReceipt('${loan.id}', ${inst.index})" title="Imprimir Recibo">
+          <i data-lucide="printer" style="width: 12px; height: 12px;"></i>
+        </button>
+        <button class="btn btn-success btn-sm" onclick="sendWhatsAppReceipt('${loan.id}', ${inst.index})" title="Enviar por WhatsApp" style="background-color: #25D366; border-color: #25D366;">
+          <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+        </button>
+      </div>`;
     }
 
     const tr = document.createElement('tr');
@@ -1212,6 +1224,17 @@ function openPayCuotaModal(loanId, cuotaIndex) {
   document.getElementById('pay-amount-input').max = remainingInCuota; // Opcional, pero se permiten abonos directos
   document.getElementById('pay-date-input').value = new Date().toISOString().split('T')[0];
   
+  const client = state.clients.find(c => c.id === loan.clientId);
+  const emailGroup = document.getElementById('pay-email-group');
+  const emailCheckbox = document.getElementById('pay-send-email-checkbox');
+  if (client && client.email) {
+    emailGroup.style.display = 'block';
+    emailCheckbox.checked = true;
+  } else {
+    emailGroup.style.display = 'none';
+    emailCheckbox.checked = false;
+  }
+  
   // Cerrar el modal detalle del préstamo momentáneamente para evitar apilamiento visual confuso, o dejar que se apile.
   // Es mejor cerrar el detalle y que al guardar el pago volvamos a abrirlo.
   closeModal('modal-loan-detail');
@@ -1225,6 +1248,7 @@ payCuotaForm.addEventListener('submit', async (e) => {
   const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
   const payAmount = parseFloat(document.getElementById('pay-amount-input').value);
   const payDate = document.getElementById('pay-date-input').value;
+  const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
   
   try {
     await apiRequest('/payments', {
@@ -1236,6 +1260,35 @@ payCuotaForm.addEventListener('submit', async (e) => {
         date: payDate
       })
     });
+    
+    if (sendEmail) {
+      const loan = state.loans.find(l => l.id === loanId);
+      const client = state.clients.find(c => c.id === loan.clientId);
+      const companyName = window.appSettings.companyName || 'PréstamosApp';
+      const smtpUser = document.getElementById('smtp-user') ? document.getElementById('smtp-user').value : '';
+      const smtpPass = document.getElementById('smtp-pass') ? document.getElementById('smtp-pass').value : '';
+      
+      if (client && client.email && smtpUser && smtpPass) {
+        const textContent = `Hola ${client.name},\n\nAcabamos de registrar tu pago de ${formatCurrency(payAmount)} para la cuota ${cuotaIndex} de tu préstamo #${loan.id.substring(0,8)}.\n\nGracias,\n${companyName}`;
+        try {
+          await apiRequest('/notify', {
+            method: 'POST',
+            body: JSON.stringify({
+              toEmail: client.email,
+              subject: `Recibo de Pago - ${companyName}`,
+              text: textContent,
+              html: textContent.replace(/\n/g, '<br>'),
+              smtpUser,
+              smtpPass
+            })
+          });
+        } catch (err) {
+          console.warn('No se pudo enviar el correo: ', err);
+        }
+      } else if (sendEmail) {
+        alert("Atención: Para enviar correos debes configurar tus credenciales SMTP en la pestaña de Configuración.");
+      }
+    }
     
     closeModal('modal-pay-cuota');
     await loadData();
@@ -1785,4 +1838,142 @@ window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 // Chequear estado inicial
 updateOnlineStatus();
+
+// ============================================
+// FUNCIONES ADICIONALES (RECIBOS, EXPORTAR)
+// ============================================
+
+function printReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  
+  const receiptHTML = `
+    <html>
+      <head>
+        <title>Recibo de Pago</title>
+        <style>
+          body { font-family: monospace; font-size: 14px; max-width: 300px; margin: 0 auto; padding: 20px; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .line { border-top: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; margin-top: 10px; }
+          td { padding: 2px 0; }
+          .right { text-align: right; }
+          @media print {
+            body { max-width: 100%; margin: 0; padding: 0; }
+            @page { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 1.2em;">${companyName}</div>
+        <div class="center">COMPROBANTE DE PAGO</div>
+        <div class="line"></div>
+        <table>
+          <tr><td>Fecha:</td><td class="right">${formatDateReadable(payment.date)}</td></tr>
+          <tr><td>Cliente:</td><td class="right">${loan.clientName}</td></tr>
+          <tr><td>Préstamo:</td><td class="right">#${loan.id.substring(0,8)}</td></tr>
+          <tr><td>Cuota No:</td><td class="right">${inst.index}</td></tr>
+        </table>
+        <div class="line"></div>
+        <table>
+          <tr><td>Capital:</td><td class="right">${formatCurrency(inst.capital)}</td></tr>
+          <tr><td>Interés:</td><td class="right">${formatCurrency(inst.interest)}</td></tr>
+          <tr class="bold"><td>TOTAL PAGADO:</td><td class="right">${formatCurrency(payment.amount)}</td></tr>
+        </table>
+        <div class="line"></div>
+        <div class="center" style="font-size: 0.9em;">¡Gracias por su pago!</div>
+        <div class="center" style="font-size: 0.8em; margin-top: 10px;">Balance Pendiente: ${formatCurrency(loan.remainingBalance)}</div>
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+    </html>
+  `;
+  
+  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  if (printWindow) {
+    printWindow.document.write(receiptHTML);
+    printWindow.document.close();
+    printWindow.focus();
+  } else {
+    alert("Por favor, permite las ventanas emergentes (pop-ups) para imprimir el recibo.");
+  }
+}
+
+function sendWhatsAppReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const client = state.clients.find(c => c.id === loan.clientId);
+  if (!client || !client.phone) {
+    alert("El cliente no tiene un número de celular registrado.");
+    return;
+  }
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  
+  const textMessage = `*RECIBO DE PAGO - ${companyName}*\n` +
+    `--------------------------------------\n` +
+    `*Fecha:* ${formatDateReadable(payment.date)}\n` +
+    `*Cliente:* ${loan.clientName}\n` +
+    `*Préstamo:* #${loan.id.substring(0,8)}\n` +
+    `*Cuota Nº:* ${inst.index}\n` +
+    `--------------------------------------\n` +
+    `*Capital:* ${formatCurrency(inst.capital)}\n` +
+    `*Interés:* ${formatCurrency(inst.interest)}\n` +
+    `*TOTAL PAGADO:* ${formatCurrency(payment.amount)}\n` +
+    `--------------------------------------\n` +
+    `*Balance Pendiente:* ${formatCurrency(loan.remainingBalance)}\n\n` +
+    `¡Gracias por su pago!`;
+    
+  const cleanPhone = client.phone.replace(/\D/g, '');
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+  window.open(waUrl, '_blank');
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportClientsCSV() {
+  const headers = ['ID', 'Nombre', 'Teléfono', 'Correo', 'Notas', 'Fecha Registro'];
+  const rows = state.clients.map(c => [
+    c.id, c.name, c.phone || '', c.email || '', (c.notes || '').replace(/"/g, '""'), c.createdAt
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+  });
+  
+  downloadCSV(csvContent, `clientes_${new Date().toISOString().split('T')[0]}.csv`);
+}
+
+function exportLoansCSV() {
+  const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
+  const rows = state.loans.map(l => [
+    l.id, l.clientName, l.amount, l.rate, FREQUENCIES[l.frequency]?.name || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+  });
+  
+  downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
+}
 

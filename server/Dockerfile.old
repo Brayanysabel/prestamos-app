@@ -1,0 +1,24 @@
+# Use a lightweight node image
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (Linux-compatible binaries)
+RUN npm install --production
+
+# Copy server code and www assets (node_modules excluded by .dockerignore)
+COPY . .
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Environment variables
+ENV NODE_ENV=production
+
+# Start the server — Railway provides PORT automatically
+CMD ["node", "server.js"]
+

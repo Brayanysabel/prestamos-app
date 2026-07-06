@@ -1,115 +1,6 @@
 // PrestamosApp - Lógica de Negocio e Interfaz de Usuario
 
-// Helper seguro para Lucide icons - evita crash si la librería no cargó
-function safeCreateIcons() {
-  try {
-    if (typeof lucide !== 'undefined' && lucide && typeof lucide.createIcons === 'function') {
-      lucide.createIcons();
-    }
-  } catch(e) {
-    // silenciar error si lucide no está disponible
-  }
-}
-
-
-// ---------------------------------------------------
-// 3️⃣  Auto‑close app when it goes to background (Android/Capacitor)
-// ---------------------------------------------------
-if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-  // Detect when the app is sent to background (pause) and exit immediately.
-  window.Capacitor.Plugins.App.addListener('pause', () => {
-    console.log('[AutoClose] App paused – exiting');
-    window.Capacitor.Plugins.App.exitApp();
-  });
-
-  // Also listen to generic app state changes (foreground/background).
-  window.Capacitor.Plugins.App.addListener('appStateChange', ({ isActive }) => {
-    if (!isActive) {
-      console.log('[AutoClose] App lost focus – exiting');
-      window.Capacitor.Plugins.App.exitApp();
-    }
-  });
-}
-
-// ---------------------------------------------------
-// 4️⃣  Inactivity timeout (optional): close after 5 minutes of no interaction
-// ---------------------------------------------------
-let inactivityTimer;
-function resetInactivityTimer() {
-  clearTimeout(inactivityTimer);
-  // 5 minutes = 300 000 ms
-  inactivityTimer = setTimeout(() => {
-    console.log('[AutoClose] Inactivity timeout – exiting');
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-      window.Capacitor.Plugins.App.exitApp();
-    }
-  }, 300000);
-}
-// Initialize Auto-Close Settings UI
-const autoCloseToggle = document.getElementById('auto-close-toggle');
-const autoCloseTimeoutInput = document.getElementById('auto-close-timeout');
-
-// Load saved settings
-const savedAutoCloseEnabled = localStorage.getItem('autoCloseEnabled') === 'true';
-const savedAutoCloseTimeout = parseInt(localStorage.getItem('autoCloseTimeout') || '5', 10);
-autoCloseToggle.checked = savedAutoCloseEnabled;
-autoCloseTimeoutInput.value = savedAutoCloseTimeout;
-
-function updateInactivityTimer() {
-  clearTimeout(inactivityTimer);
-  if (!autoCloseToggle.checked) return; // disabled
-  const timeoutMs = Math.max(60, autoCloseTimeoutInput.value) * 60000; // minutes to ms, min 1 min
-  inactivityTimer = setTimeout(() => {
-    console.log('[AutoClose] Inactivity timeout – exiting');
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-      window.Capacitor.Plugins.App.exitApp();
-    }
-  }, timeoutMs);
-}
-
-// Reset timer on any user interaction if enabled
-['click', 'touchstart', 'keydown', 'mousemove'].forEach(evt => {
-  document.addEventListener(evt, () => {
-    if (autoCloseToggle.checked) {
-      resetInactivityTimer();
-    }
-  });
-});
-
-// Listen for settings changes
-autoCloseToggle.addEventListener('change', () => {
-  localStorage.setItem('autoCloseEnabled', autoCloseToggle.checked);
-  updateInactivityTimer();
-});
-autoCloseTimeoutInput.addEventListener('change', () => {
-  const mins = Math.max(1, parseInt(autoCloseTimeoutInput.value, 10) || 5);
-  autoCloseTimeoutInput.value = mins;
-  localStorage.setItem('autoCloseTimeout', mins);
-  updateInactivityTimer();
-});
-
-// Initialize timer based on saved settings
-resetInactivityTimer();
-updateInactivityTimer();
-
-if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
-  window.Capacitor.Plugins.App.addListener('backButton', () => {
-    const isLoginActive = document.getElementById('login-screen').classList.contains('active');
-    const isAppWrapperActive = !document.getElementById('app-wrapper').classList.contains('d-none');
-    const activeModales = document.querySelectorAll('.modal-overlay.active');
-    
-    if (isLoginActive || (isAppWrapperActive && activeModales.length === 0)) {
-      window.Capacitor.Plugins.App.exitApp();
-    } else if (activeModales.length > 0) {
-      // Si hay modales abiertos, cerramos el último modal abierto
-      const lastModal = activeModales[activeModales.length - 1];
-      closeModal(lastModal.id);
-    } else {
-      window.history.back();
-    }
-  });
-}
-
+// --- 1. ESTADO DE LA APLICACIÓN ---
 let state = {
   clients: [],
   loans: [],
@@ -133,52 +24,35 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-let API_URL = localStorage.getItem('apiUrl') || window.PRESTAMOS_API_URL || 'https://prestamos-backend-production-1c7d.up.railway.app/api';
-
+const API_URL = window.PRESTAMOS_API_URL || '/api';
 
 function getAuthToken() {
-  return sessionStorage.getItem('prestamos_auth_token');
+  return localStorage.getItem('prestamos_auth_token');
 }
 
 async function apiRequest(endpoint, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { 'X-Auth-Token': token } : {}),
+    ...(token && { 'X-Auth-Token': token }),
     ...options.headers
   };
   
-  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers, credentials: 'include' });
+  const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
   if (response.status === 401) {
+    localStorage.removeItem('prestamos_auth_token');
     showLogin();
     throw new Error('No autorizado');
   }
-  
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error((data && data.error) || 'Error en la solicitud');
-  }
-  return data;
+  return response.json();
 }
 
 async function loadData() {
-  // Auth is now cookie-based; we try to load data and if 401, showLogin is called by apiRequest
+  if (!getAuthToken()) {
+    showLogin();
+    return;
+  }
   try {
-    const isSuperAdmin = sessionStorage.getItem('prestamos_is_superadmin') === '1';
-    
-    if (isSuperAdmin) {
-      document.getElementById('login-screen').classList.remove('active');
-      document.getElementById('app-wrapper').classList.remove('d-none');
-      
-      // Ocultar barra lateral
-      document.querySelector('.sidebar').classList.add('d-none');
-      
-      // Mostrar solo el dashboard global
-      switchSection('superadmin');
-      await loadSaasCompanies();
-      return;
-    }
-
     const [clients, loans] = await Promise.all([
       apiRequest('/clients'),
       apiRequest('/loans')
@@ -205,10 +79,6 @@ function showLogin() {
   document.getElementById('login-screen').classList.add('active');
   document.getElementById('app-wrapper').classList.add('d-none');
 }
-// ============================================================
-// Toda la inicialización DOM se hace aquí, de forma segura
-// ============================================================
-
 
 // Lógica del formulario de login
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -221,213 +91,17 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const res = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user, password: pass }),
-      credentials: 'include'
+      body: JSON.stringify({ username: user, password: pass })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error de autenticación');
     
-    // Store JWT token locally for mobile clients
-    if (data.token) {
-      sessionStorage.setItem('prestamos_auth_token', data.token);
-    }
-    
-    if (data.isSuperAdmin) {
-      sessionStorage.setItem('prestamos_is_superadmin', '1');
-    } else {
-      sessionStorage.removeItem('prestamos_is_superadmin');
-    }
+    localStorage.setItem('prestamos_auth_token', data.token);
     errorEl.classList.add('d-none');
     loadData();
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.classList.remove('d-none');
-  }
-});
-
-// Lógica de Cerrar Sesión
-document.getElementById('logout-btn').addEventListener('click', async () => {
-  // Clear HttpOnly cookie via server endpoint
-  try {
-    await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
-  } catch(e) { /* ignore */ }
-  sessionStorage.removeItem('prestamos_is_superadmin');
-  sessionStorage.removeItem('prestamos_auth_token');
-  showLogin();
-});
-
-if (document.getElementById('logout-btn-saas')) {
-  document.getElementById('logout-btn-saas').addEventListener('click', async () => {
-    try {
-      await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
-    } catch(e) { /* ignore */ }
-    sessionStorage.removeItem('prestamos_is_superadmin');
-    sessionStorage.removeItem('prestamos_auth_token');
-    showLogin();
-  });
-}
-
-// Lógica para mostrar/ocultar pantalla de registro
-document.getElementById('show-signup-btn').addEventListener('click', () => {
-  document.getElementById('login-screen').classList.remove('active');
-  document.getElementById('login-screen').classList.add('d-none');
-  document.getElementById('signup-screen').classList.add('active');
-  document.getElementById('signup-screen').classList.remove('d-none');
-});
-
-document.getElementById('back-to-login-btn').addEventListener('click', () => {
-  document.getElementById('signup-screen').classList.remove('active');
-  document.getElementById('signup-screen').classList.add('d-none');
-  document.getElementById('login-screen').classList.add('active');
-  document.getElementById('login-screen').classList.remove('d-none');
-});
-
-// Lógica del formulario de registro (SaaS)
-document.getElementById('signup-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const companyName = document.getElementById('signup-company').value;
-  const username = document.getElementById('signup-username').value;
-  const password = document.getElementById('signup-password').value;
-  const plan = document.querySelector('input[name="signup-plan"]:checked').value;
-  
-  const errorEl = document.getElementById('signup-error');
-  const successEl = document.getElementById('signup-success');
-  const btn = e.target.querySelector('button[type="submit"]');
-  
-  try {
-    btn.disabled = true;
-    errorEl.classList.add('d-none');
-    
-    const res = await fetch(`${API_URL}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyName, username, password, plan })
-    });
-    
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al registrar la cuenta');
-    
-    successEl.classList.remove('d-none');
-    setTimeout(() => {
-      document.getElementById('back-to-login-btn').click();
-      document.getElementById('login-username').value = username;
-      document.getElementById('login-password').value = password;
-      successEl.classList.add('d-none');
-      e.target.reset();
-    }, 2000);
-    
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-// Lógica de Recuperación de Contraseña
-document.getElementById('show-forgot-password-btn').addEventListener('click', (e) => {
-  e.preventDefault();
-  document.getElementById('login-screen').classList.add('d-none');
-  document.getElementById('forgot-password-screen').classList.remove('d-none');
-});
-
-document.getElementById('back-from-forgot-btn').addEventListener('click', () => {
-  document.getElementById('forgot-password-screen').classList.add('d-none');
-  document.getElementById('login-screen').classList.remove('d-none');
-});
-
-document.getElementById('show-reset-password-btn').addEventListener('click', () => {
-  document.getElementById('forgot-password-screen').classList.add('d-none');
-  document.getElementById('reset-password-screen').classList.remove('d-none');
-});
-
-document.getElementById('back-from-reset-btn').addEventListener('click', () => {
-  document.getElementById('reset-password-screen').classList.add('d-none');
-  document.getElementById('login-screen').classList.remove('d-none');
-});
-
-// Enviar correo de recuperación
-document.getElementById('forgot-password-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const username = document.getElementById('forgot-username').value;
-  const errorEl = document.getElementById('forgot-error');
-  const successEl = document.getElementById('forgot-success');
-  const btn = e.target.querySelector('button[type="submit"]');
-  
-  try {
-    btn.disabled = true;
-    errorEl.classList.add('d-none');
-    successEl.classList.add('d-none');
-    
-    const res = await fetch(`${API_URL}/forgot-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
-    });
-    
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al solicitar recuperación');
-    
-    successEl.textContent = data.message;
-    successEl.classList.remove('d-none');
-    
-    // Si estamos en local y nos devuelve el token, lo pre-llenamos por comodidad
-    if (data.token) {
-      setTimeout(() => {
-        document.getElementById('show-reset-password-btn').click();
-        document.getElementById('reset-username').value = username;
-        document.getElementById('reset-token').value = data.token;
-      }, 3000);
-    }
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-// Restablecer contraseña
-document.getElementById('reset-password-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const username = document.getElementById('reset-username').value;
-  const token = document.getElementById('reset-token').value;
-  const newPassword = document.getElementById('reset-new-password').value;
-  
-  const errorEl = document.getElementById('reset-error');
-  const successEl = document.getElementById('reset-success');
-  const btn = e.target.querySelector('button[type="submit"]');
-  
-  try {
-    btn.disabled = true;
-    errorEl.classList.add('d-none');
-    successEl.classList.add('d-none');
-    
-    const res = await fetch(`${API_URL}/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, token, newPassword })
-    });
-    
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al restablecer contraseña');
-    
-    successEl.textContent = data.message;
-    successEl.classList.remove('d-none');
-    
-    setTimeout(() => {
-      document.getElementById('back-from-reset-btn').click();
-      document.getElementById('login-username').value = username;
-      document.getElementById('login-password').value = newPassword;
-      e.target.reset();
-      successEl.classList.add('d-none');
-    }, 2000);
-    
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
   }
 });
 
@@ -712,8 +386,7 @@ const sectionMeta = {
   calculator: { title: 'Calculadora de Préstamos', subtitle: 'Simula créditos y proyecta tablas de amortización.' },
   clients: { title: 'Gestión de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
   loans: { title: 'Préstamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
-  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' },
-  superadmin: { title: 'Administración Global', subtitle: 'Panel de control de tu negocio SaaS.' }
+  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' }
 };
 
 function switchSection(targetSectionId) {
@@ -738,16 +411,6 @@ function switchSection(targetSectionId) {
     sectionTitle.textContent = meta.title;
     sectionSubtitle.textContent = meta.subtitle;
   }
-
-  // Ocultar acciones si es superadmin
-  const headerActions = document.querySelector('.header-actions');
-  if (headerActions) {
-    if (targetSectionId === 'superadmin') {
-      headerActions.style.display = 'none';
-    } else {
-      headerActions.style.display = 'flex';
-    }
-  }
   
   // Actualizar datos de la sección específica
   if (targetSectionId === 'dashboard') {
@@ -764,25 +427,6 @@ function switchSection(targetSectionId) {
 navLinks.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
-    
-    // Verificar si es una función premium
-    const requiredPlan = link.getAttribute('data-required-plan');
-    if (requiredPlan) {
-      const userInfo = getUserInfo();
-      const planLevels = { 'principiante': 1, 'basico': 2, 'intermedio': 3, 'premium': 4 };
-      const userPlanLevel = planLevels[userInfo?.plan || 'principiante'];
-      const reqLevel = planLevels[requiredPlan];
-      
-      if (userPlanLevel < reqLevel) {
-        document.getElementById('upgrade-required-plan').textContent = requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1);
-        document.getElementById('upgrade-modal').classList.add('active');
-        return;
-      } else {
-        alert('Este módulo de ' + link.querySelector('span').textContent + ' aún está en construcción para futuras versiones.');
-        return;
-      }
-    }
-    
     const target = link.getAttribute('data-target');
     switchSection(target);
   });
@@ -975,7 +619,6 @@ function renderRecentPayments() {
 
 // Gráfico: Estado de Préstamos
 function renderStatusChart(active, paid, overdue) {
-  if (typeof Chart === 'undefined') return; // Guard: Chart.js not loaded
   const ctx = document.getElementById('statusChart').getContext('2d');
   
   if (statusChartInstance) {
@@ -1024,7 +667,6 @@ function renderStatusChart(active, paid, overdue) {
 
 // Gráfico: Recaudaciones por Mes
 function renderCollectionsChart(collectionsByMonth) {
-  if (typeof Chart === 'undefined') return; // Guard: Chart.js not loaded
   const ctx = document.getElementById('collectionsChart').getContext('2d');
   
   if (collectionsChartInstance) {
@@ -1151,7 +793,7 @@ calculatorForm.addEventListener('submit', (e) => {
   }
   
   // Re-inicializar iconos de la tabla
-  safeCreateIcons();
+  lucide.createIcons();
 });
 
 // Renderizar filas de la tabla de amortización generada
@@ -1316,7 +958,11 @@ function renderClientsTable() {
           ${activeLoans} activos, ${historicalLoans} finalizados
         </span>
       </td>
-      <td>${client.phone}</td>
+      <td>
+        <a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;">
+          <i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}
+        </a>
+      </td>
       <td>${client.email}</td>
       <td style="font-family: var(--font-mono); text-align: center;">${count}</td>
       <td class="number-cell text-right" style="font-weight: 600; color: ${debt > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(debt)}</td>
@@ -1337,7 +983,7 @@ function renderClientsTable() {
     clientsTableBody.appendChild(tr);
   });
   
-  safeCreateIcons();
+  lucide.createIcons();
 }
 
 // Editar cliente modal
@@ -1361,7 +1007,7 @@ function viewClientDetail(id) {
   if (!client) return;
   
   document.getElementById('client-detail-name').textContent = client.name;
-  document.getElementById('client-detail-phone').textContent = client.phone;
+  document.getElementById('client-detail-phone').innerHTML = `<a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;"><i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}</a>`;
   document.getElementById('client-detail-email').textContent = client.email;
   
   const debt = getClientActiveDebt(id);
@@ -1401,7 +1047,7 @@ function viewClientDetail(id) {
   }
   
   openModal('modal-client-detail');
-  safeCreateIcons();
+  lucide.createIcons();
 }
 
 // 5.4 GESTIÓN DE PRÉSTAMOS
@@ -1462,7 +1108,7 @@ function renderLoansTable() {
     loansTableBody.appendChild(tr);
   });
   
-  safeCreateIcons();
+  lucide.createIcons();
 }
 
 // Ver ficha detallada de un Préstamo
@@ -1521,9 +1167,17 @@ function viewLoanDetail(loanId) {
         <i data-lucide="hand-coins" style="width: 12px; height: 12px;"></i> Cobrar
       </button>`;
     } else {
-      actionBtn = `<button class="btn btn-secondary btn-sm" disabled>
-        <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
-      </button>`;
+      actionBtn = `<div style="display:flex;gap:4px;justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm" disabled>
+          <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="printReceipt('${loan.id}', ${inst.index})" title="Imprimir Recibo">
+          <i data-lucide="printer" style="width: 12px; height: 12px;"></i>
+        </button>
+        <button class="btn btn-success btn-sm" onclick="sendWhatsAppReceipt('${loan.id}', ${inst.index})" title="Enviar por WhatsApp" style="background-color: #25D366; border-color: #25D366;">
+          <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+        </button>
+      </div>`;
     }
 
     const tr = document.createElement('tr');
@@ -1541,7 +1195,7 @@ function viewLoanDetail(loanId) {
   });
   
   openModal('modal-loan-detail');
-  safeCreateIcons();
+  lucide.createIcons();
 }
 
 // 5.5 REGISTRO DE PAGOS / COBROS
@@ -1570,6 +1224,17 @@ function openPayCuotaModal(loanId, cuotaIndex) {
   document.getElementById('pay-amount-input').max = remainingInCuota; // Opcional, pero se permiten abonos directos
   document.getElementById('pay-date-input').value = new Date().toISOString().split('T')[0];
   
+  const client = state.clients.find(c => c.id === loan.clientId);
+  const emailGroup = document.getElementById('pay-email-group');
+  const emailCheckbox = document.getElementById('pay-send-email-checkbox');
+  if (client && client.email) {
+    emailGroup.style.display = 'block';
+    emailCheckbox.checked = true;
+  } else {
+    emailGroup.style.display = 'none';
+    emailCheckbox.checked = false;
+  }
+  
   // Cerrar el modal detalle del préstamo momentáneamente para evitar apilamiento visual confuso, o dejar que se apile.
   // Es mejor cerrar el detalle y que al guardar el pago volvamos a abrirlo.
   closeModal('modal-loan-detail');
@@ -1583,6 +1248,7 @@ payCuotaForm.addEventListener('submit', async (e) => {
   const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
   const payAmount = parseFloat(document.getElementById('pay-amount-input').value);
   const payDate = document.getElementById('pay-date-input').value;
+  const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
   
   try {
     await apiRequest('/payments', {
@@ -1594,6 +1260,35 @@ payCuotaForm.addEventListener('submit', async (e) => {
         date: payDate
       })
     });
+    
+    if (sendEmail) {
+      const loan = state.loans.find(l => l.id === loanId);
+      const client = state.clients.find(c => c.id === loan.clientId);
+      const companyName = window.appSettings.companyName || 'PréstamosApp';
+      const smtpUser = document.getElementById('smtp-user') ? document.getElementById('smtp-user').value : '';
+      const smtpPass = document.getElementById('smtp-pass') ? document.getElementById('smtp-pass').value : '';
+      
+      if (client && client.email && smtpUser && smtpPass) {
+        const textContent = `Hola ${client.name},\n\nAcabamos de registrar tu pago de ${formatCurrency(payAmount)} para la cuota ${cuotaIndex} de tu préstamo #${loan.id.substring(0,8)}.\n\nGracias,\n${companyName}`;
+        try {
+          await apiRequest('/notify', {
+            method: 'POST',
+            body: JSON.stringify({
+              toEmail: client.email,
+              subject: `Recibo de Pago - ${companyName}`,
+              text: textContent,
+              html: textContent.replace(/\n/g, '<br>'),
+              smtpUser,
+              smtpPass
+            })
+          });
+        } catch (err) {
+          console.warn('No se pudo enviar el correo: ', err);
+        }
+      } else if (sendEmail) {
+        alert("Atención: Para enviar correos debes configurar tus credenciales SMTP en la pestaña de Configuración.");
+      }
+    }
     
     closeModal('modal-pay-cuota');
     await loadData();
@@ -1626,7 +1321,7 @@ function applyTheme(theme) {
     themeText.textContent = "Modo Oscuro";
     settingsThemeBtn.innerHTML = '<i data-lucide="moon"></i> Tema Oscuro';
   }
-  safeCreateIcons();
+  lucide.createIcons();
 
   // Re-dibujar gráficos si están activos para adaptar colores de fuente
   const activeLink = document.querySelector('.nav-link.active');
@@ -1770,7 +1465,7 @@ if (changeCredentialsForm) {
       errorEl.classList.add('d-none');
       
       // Forzar cierre de sesión
-      sessionStorage.removeItem('prestamos_auth_token');
+      localStorage.removeItem('prestamos_auth_token');
       showLogin();
     } catch (err) {
       errorEl.textContent = err.message;
@@ -1793,7 +1488,7 @@ if (emailBackupForm) {
     
     btn.disabled = true;
     btn.innerHTML = '<i data-lucide="loader" class="spin"></i> Enviando...';
-    safeCreateIcons();
+    lucide.createIcons();
     msgEl.textContent = '';
     
     try {
@@ -1811,51 +1506,38 @@ if (emailBackupForm) {
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i data-lucide="mail"></i> Enviar Respaldo';
-      safeCreateIcons();
+      lucide.createIcons();
     }
   });
 }
 
 // --- INSTALACIÓN DE LA PWA ---
 let deferredPrompt;
-const installAppBtns = document.querySelectorAll('#install-app-btn, #top-install-btn, #login-install-btn');
-const loginInstallContainer = document.getElementById('login-install-container');
-
-// Detectar si ya está instalada o es standalone
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-if (isStandalone) {
-  installAppBtns.forEach(btn => btn.style.display = 'none');
-  if (loginInstallContainer) loginInstallContainer.style.display = 'none';
-}
+const installAppBtn = document.getElementById('install-app-btn');
 
 window.addEventListener('beforeinstallprompt', (e) => {
+  // Previene que Chrome 67 y anteriores muestren automáticamente el prompt
   e.preventDefault();
+  // Guarda el evento para poder dispararlo después.
   deferredPrompt = e;
+  // Muestra el botón de instalación
+  if (installAppBtn) installAppBtn.style.display = 'flex';
 });
 
-installAppBtns.forEach(btn => {
-  btn.addEventListener('click', async () => {
-    // Es iOS Safari (no soporta beforeinstallprompt)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    if (isIOS && !isStandalone) {
-      alert("Para instalar en iPhone/iPad:\n\n1. Toca el ícono 'Compartir' (cuadrado con flecha) en la parte inferior de Safari.\n2. Selecciona 'Añadir a la pantalla de inicio'.\n3. Confirma tocando 'Añadir'.");
-      return;
-    }
-
-    if (!deferredPrompt) {
-      alert("Para instalar en Android:\n\nToca los 3 puntos del menú de Chrome (arriba a la derecha) y selecciona 'Añadir a la pantalla de inicio' o 'Instalar aplicación'.");
-      return;
-    }
-    
+if (installAppBtn) {
+  installAppBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    // Oculta nuestro botón proporcionado por la interfaz de usuario
+    installAppBtn.style.display = 'none';
+    // Muestra el prompt de instalación
     deferredPrompt.prompt();
+    // Espera a que el usuario responda al prompt
     const { outcome } = await deferredPrompt.userChoice;
     console.log(`User response to the install prompt: ${outcome}`);
-    if (outcome === 'accepted') {
-      installAppBtns.forEach(b => b.style.display = 'none');
-    }
+    // No podemos volver a usar el prompt, lo descartamos
     deferredPrompt = null;
   });
-});
+}
 
 // window.addEventListener('appinstalled', () => {
 //   // Limpia el deferredPrompt para el garbage collection
@@ -1959,7 +1641,6 @@ async function loadSettings() {
     if (document.getElementById('company-address-input')) document.getElementById('company-address-input').value = settings.companyAddress || '';
     if (document.getElementById('currency-symbol-input')) document.getElementById('currency-symbol-input').value = settings.currencySymbol || '$';
     if (document.getElementById('default-interest-input')) document.getElementById('default-interest-input').value = settings.defaultInterest || '';
-    if (document.getElementById('settings-api-url')) document.getElementById('settings-api-url').value = localStorage.getItem('apiUrl') || '';
     
     // Auto-completar tasa de interés por defecto en la calculadora
     const calcRate = document.getElementById('calc-rate');
@@ -2020,38 +1701,6 @@ if (brandForm) {
       btn.textContent = 'Guardar Marca';
     }
   });
-}
-
-// Update Plan Limit Widget
-function updatePlanWidget() {
-  const userInfo = getUserInfo();
-  if (!userInfo) return;
-  
-  const limits = {
-    'principiante': { name: 'Principiante', limit: 100 },
-    'basico': { name: 'Básico', limit: 500 },
-    'intermedio': { name: 'Intermedio', limit: 1000 },
-    'premium': { name: 'Premium 💎', limit: 100000 }
-  };
-  
-  const plan = limits[userInfo.plan] || limits['basico'];
-  const usage = state.loans.length;
-  
-  document.getElementById('current-plan-name').textContent = plan.name;
-  document.getElementById('current-plan-usage').textContent = usage;
-  document.getElementById('current-plan-limit').textContent = plan.limit === 100000 ? 'Ilimitado' : plan.limit;
-  
-  const percent = plan.limit === 100000 ? 0 : Math.min((usage / plan.limit) * 100, 100);
-  const progressEl = document.getElementById('current-plan-progress');
-  progressEl.style.width = percent + '%';
-  
-  if (percent >= 100) {
-    progressEl.style.backgroundColor = 'var(--danger)';
-  } else if (percent >= 80) {
-    progressEl.style.backgroundColor = 'var(--warning)';
-  } else {
-    progressEl.style.backgroundColor = 'var(--primary)';
-  }
 }
 
 const finForm = document.getElementById('financial-settings-form');
@@ -2168,361 +1817,163 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings();
   
   // Inicializar Lucide Icons
-  safeCreateIcons();
+  lucide.createIcons();
 });
 
-// --- SaaS Super Admin Functions ---
-
-async function loadSaasCompanies() {
-  try {
-    await loadSaasPlans();
-    
-    const companies = await apiRequest('/saas/companies');
-    const tbody = document.getElementById('saas-companies-table');
-    tbody.innerHTML = '';
-    
-    let totalActivas = 0;
-    let totalSuspendidas = 0;
-    let ingresosProyectados = 0;
-    
-    // Usaremos los planes actuales o 0 si no hay
-    const precios = {};
-    if (currentSaasPlans && currentSaasPlans.length > 0) {
-      currentSaasPlans.forEach(p => {
-        precios[p.id] = p.price;
-      });
+// Manejo de estado de red (Online / Offline)
+function updateOnlineStatus() {
+  const banner = document.getElementById('offline-banner');
+  if (banner) {
+    if (navigator.onLine) {
+      banner.style.display = 'none';
+      document.body.style.paddingTop = '0';
+    } else {
+      banner.style.display = 'block';
+      document.body.style.paddingTop = '30px'; // Espacio para el banner
     }
-
-    companies.forEach(c => {
-      const isSuspended = c.status === 'suspended';
-      
-      // Calcular KPIs
-      if (!isSuspended) {
-        totalActivas++;
-        if (precios[c.plan]) {
-          ingresosProyectados += precios[c.plan];
-        }
-      } else {
-        totalSuspendidas++;
-      }
-
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${c.name}</strong></td>
-        <td><span class="badge" style="background:var(--primary); color:white; padding:0.2rem 0.5rem; border-radius:12px;">${c.plan.toUpperCase()}</span></td>
-        <td>
-          <span class="badge" style="background:${isSuspended ? 'var(--danger)' : 'var(--success)'}; color:white; padding:0.2rem 0.5rem; border-radius:12px;">
-            ${isSuspended ? 'Suspendida' : 'Activa'}
-          </span>
-        </td>
-        <td>${c.validUntil || 'Ilimitado'}</td>
-        <td>${c.userCount} / ${c.loanCount}</td>
-        <td>
-          <div style="display: flex; gap: 0.25rem;">
-            <button class="btn btn-sm btn-success" onclick="openSaasPayModal('${c.id}', '${c.name.replace(/'/g, "\\'")}')" title="Registrar Pago">
-              <i data-lucide="dollar-sign"></i> Cobrar
-            </button>
-            <button class="btn btn-sm ${isSuspended ? 'btn-primary' : 'btn-secondary'}" onclick="toggleSaasStatus('${c.id}', '${isSuspended ? 'active' : 'suspended'}')" title="${isSuspended ? 'Reactivar' : 'Suspender'}">
-              <i data-lucide="${isSuspended ? 'check-circle' : 'ban'}"></i> ${isSuspended ? 'Reactivar' : 'Suspender'}
-            </button>
-            <button class="btn btn-sm btn-warning" onclick="openSaasEditCompany('${c.id}', '${c.name.replace(/'/g, "\\'")}', '${c.plan}')" title="Editar Plan">
-              <i data-lucide="edit"></i> Plan
-            </button>
-            <button class="btn btn-sm btn-danger" onclick="openSaasDeleteCompany('${c.id}')" title="Eliminar Empresa">
-              <i data-lucide="trash-2"></i> Borrar
-            </button>
-          </div>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-    
-    // Actualizar DOM de KPIs
-    document.getElementById('saas-kpi-total').textContent = companies.length;
-    document.getElementById('saas-kpi-active').textContent = totalActivas;
-    document.getElementById('saas-kpi-suspended').textContent = totalSuspendidas;
-    document.getElementById('saas-kpi-income').textContent = formatCurrency(ingresosProyectados);
-    
-    safeCreateIcons();
-  } catch(e) {
-    console.error(e);
-    alert('Error cargando empresas SaaS: ' + e.message);
   }
 }
 
-let currentSaasPlans = [];
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+// Chequear estado inicial
+updateOnlineStatus();
 
-async function loadSaasPlans() {
-  try {
-    const plans = await apiRequest('/saas/plans');
-    currentSaasPlans = plans;
-    const tbody = document.getElementById('saas-plans-table');
-    tbody.innerHTML = '';
-    
-    plans.forEach(p => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${p.id}</strong></td>
-        <td>${p.name}</td>
-        <td>${formatCurrency(p.price)}</td>
-        <td>${p.max_users >= 9999 ? 'Ilimitado' : p.max_users}</td>
-        <td>${p.max_loans >= 9999 ? 'Ilimitado' : p.max_loans}</td>
-        <td>
-          <button class="btn btn-sm btn-danger" onclick="deleteSaasPlan('${p.id}')">
-            <i data-lucide="trash-2"></i>
-          </button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch (e) {
-    console.error('Error cargando planes SaaS', e);
-  }
-}
+// ============================================
+// FUNCIONES ADICIONALES (RECIBOS, EXPORTAR)
+// ============================================
 
-function openSaasPlanModal() {
-  document.getElementById('saas-plan-id').value = '';
-  document.getElementById('saas-plan-name').value = '';
-  document.getElementById('saas-plan-price').value = '';
-  document.getElementById('saas-plan-users').value = '';
-  document.getElementById('saas-plan-loans').value = '';
-  document.getElementById('saas-plan-error').classList.add('d-none');
-  document.getElementById('modal-saas-plan').classList.add('active');
-}
-
-
-async function deleteSaasPlan(id) {
-  if (!confirm(`¿Estás seguro de eliminar el plan "${id}"?`)) return;
-  try {
-    await apiRequest(`/saas/plans/${id}`, { method: 'DELETE' });
-    await loadSaasPlans();
-    safeCreateIcons();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-function openSaasEditCompany(companyId, companyName, currentPlan) {
-  document.getElementById('saas-edit-company-id').value = companyId;
-  document.getElementById('saas-edit-company-name-label').textContent = `Selecciona el nuevo plan para ${companyName}.`;
+function printReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
   
-  const select = document.getElementById('saas-edit-company-plan');
-  select.innerHTML = currentSaasPlans.map(p => 
-    `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>${p.name} - ${formatCurrency(p.price)}/mes</option>`
-  ).join('');
+  const receiptHTML = `
+    <html>
+      <head>
+        <title>Recibo de Pago</title>
+        <style>
+          body { font-family: monospace; font-size: 14px; max-width: 300px; margin: 0 auto; padding: 20px; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .line { border-top: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; margin-top: 10px; }
+          td { padding: 2px 0; }
+          .right { text-align: right; }
+          @media print {
+            body { max-width: 100%; margin: 0; padding: 0; }
+            @page { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 1.2em;">${companyName}</div>
+        <div class="center">COMPROBANTE DE PAGO</div>
+        <div class="line"></div>
+        <table>
+          <tr><td>Fecha:</td><td class="right">${formatDateReadable(payment.date)}</td></tr>
+          <tr><td>Cliente:</td><td class="right">${loan.clientName}</td></tr>
+          <tr><td>Préstamo:</td><td class="right">#${loan.id.substring(0,8)}</td></tr>
+          <tr><td>Cuota No:</td><td class="right">${inst.index}</td></tr>
+        </table>
+        <div class="line"></div>
+        <table>
+          <tr><td>Capital:</td><td class="right">${formatCurrency(inst.capital)}</td></tr>
+          <tr><td>Interés:</td><td class="right">${formatCurrency(inst.interest)}</td></tr>
+          <tr class="bold"><td>TOTAL PAGADO:</td><td class="right">${formatCurrency(payment.amount)}</td></tr>
+        </table>
+        <div class="line"></div>
+        <div class="center" style="font-size: 0.9em;">¡Gracias por su pago!</div>
+        <div class="center" style="font-size: 0.8em; margin-top: 10px;">Balance Pendiente: ${formatCurrency(loan.remainingBalance)}</div>
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+    </html>
+  `;
   
-  document.getElementById('saas-edit-company-error').classList.add('d-none');
-  document.getElementById('modal-saas-edit-company').classList.add('active');
+  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  if (printWindow) {
+    printWindow.document.write(receiptHTML);
+    printWindow.document.close();
+    printWindow.focus();
+  } else {
+    alert("Por favor, permite las ventanas emergentes (pop-ups) para imprimir el recibo.");
+  }
 }
 
-function openSaasDeleteCompany(companyId) {
-  if (companyId === 'comp_default') {
-    alert('No puedes eliminar la empresa principal.');
+function sendWhatsAppReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const client = state.clients.find(c => c.id === loan.clientId);
+  if (!client || !client.phone) {
+    alert("El cliente no tiene un número de celular registrado.");
     return;
   }
-  document.getElementById('saas-delete-company-id').value = companyId;
-  document.getElementById('modal-saas-delete-company').classList.add('active');
-}
-
-function openSaasPayModal(companyId, companyName) {
-  document.getElementById('saas-pay-company-id').value = companyId;
-  document.getElementById('saas-pay-company-name').value = companyName;
-  document.getElementById('saas-pay-amount').value = '';
-  document.getElementById('saas-pay-months').value = '1';
-  document.getElementById('saas-pay-notes').value = '';
-  document.getElementById('saas-pay-error').classList.add('d-none');
-  document.getElementById('modal-saas-pay').classList.add('active');
-}
-
-async function toggleSaasStatus(companyId, newStatus) {
-  const label = newStatus === 'active' ? 'ACTIVA' : 'SUSPENDIDA';
-  if (!confirm(`¿Estás seguro de que deseas marcar esta empresa como ${label}?`)) return;
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
   
-  try {
-    await apiRequest(`/saas/companies/${companyId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status: newStatus })
-    });
-    await loadSaasCompanies();
-  } catch(err) {
-    alert('Error actualizando estado: ' + err.message);
-  }
+  const textMessage = `*RECIBO DE PAGO - ${companyName}*\n` +
+    `--------------------------------------\n` +
+    `*Fecha:* ${formatDateReadable(payment.date)}\n` +
+    `*Cliente:* ${loan.clientName}\n` +
+    `*Préstamo:* #${loan.id.substring(0,8)}\n` +
+    `*Cuota Nº:* ${inst.index}\n` +
+    `--------------------------------------\n` +
+    `*Capital:* ${formatCurrency(inst.capital)}\n` +
+    `*Interés:* ${formatCurrency(inst.interest)}\n` +
+    `*TOTAL PAGADO:* ${formatCurrency(payment.amount)}\n` +
+    `--------------------------------------\n` +
+    `*Balance Pendiente:* ${formatCurrency(loan.remainingBalance)}\n\n` +
+    `¡Gracias por su pago!`;
+    
+  const cleanPhone = client.phone.replace(/\D/g, '');
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+  window.open(waUrl, '_blank');
 }
 
-// Registrar todos los eventos de los formularios SaaS
-const saasPayForm = document.getElementById('saas-pay-form');
-if (saasPayForm) {
-  saasPayForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const companyId = document.getElementById('saas-pay-company-id').value;
-      const amount = parseFloat(document.getElementById('saas-pay-amount').value);
-      const months = parseInt(document.getElementById('saas-pay-months').value, 10);
-      const notes = document.getElementById('saas-pay-notes').value;
-      const btn = e.target.querySelector('button[type="submit"]');
-      const errorEl = document.getElementById('saas-pay-error');
-      try {
-        btn.disabled = true;
-        errorEl.classList.add('d-none');
-        await apiRequest('/saas/payments', {
-          method: 'POST',
-          body: JSON.stringify({ targetCompanyId: companyId, amount, months, notes })
-        });
-        closeModal('modal-saas-pay');
-        await loadSaasCompanies();
-      } catch(err) {
-        errorEl.textContent = err.message;
-        errorEl.classList.remove('d-none');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
-  const saasPlanForm = document.getElementById('saas-plan-form');
-  if (saasPlanForm) {
-    saasPlanForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const payload = {
-        id: document.getElementById('saas-plan-id').value.toLowerCase().replace(/\s+/g, ''),
-        name: document.getElementById('saas-plan-name').value,
-        price: parseFloat(document.getElementById('saas-plan-price').value),
-        max_users: parseInt(document.getElementById('saas-plan-users').value, 10),
-        max_loans: parseInt(document.getElementById('saas-plan-loans').value, 10)
-      };
-      const btn = e.target.querySelector('button[type="submit"]');
-      const errorEl = document.getElementById('saas-plan-error');
-      try {
-        btn.disabled = true;
-        await apiRequest('/saas/plans', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        closeModal('modal-saas-plan');
-        await loadSaasPlans();
-        safeCreateIcons();
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.classList.remove('d-none');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
-
-  const saasEditCompanyForm = document.getElementById('saas-edit-company-form');
-  if (saasEditCompanyForm) {
-    saasEditCompanyForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const companyId = document.getElementById('saas-edit-company-id').value;
-      const plan = document.getElementById('saas-edit-company-plan').value;
-      const btn = e.target.querySelector('button[type="submit"]');
-      const errorEl = document.getElementById('saas-edit-company-error');
-      try {
-        btn.disabled = true;
-        await apiRequest(`/saas/companies/${companyId}/plan`, {
-          method: 'PUT',
-          body: JSON.stringify({ plan })
-        });
-        closeModal('modal-saas-edit-company');
-        await loadSaasCompanies();
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.classList.remove('d-none');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
-
-  const saasDeleteCompanyForm = document.getElementById('saas-delete-company-form');
-  if (saasDeleteCompanyForm) {
-    saasDeleteCompanyForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const companyId = document.getElementById('saas-delete-company-id').value;
-      const btn = e.target.querySelector('button[type="submit"]');
-      try {
-        btn.disabled = true;
-        await apiRequest(`/saas/companies/${companyId}`, {
-          method: 'DELETE'
-        });
-        closeModal('modal-saas-delete-company');
-        await loadSaasCompanies();
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  }
-
-// --- CONFIGURACIÓN DE CONEXIÓN A API ---
-const apiConnectionForm = document.getElementById('api-connection-form');
-if (apiConnectionForm) {
-  apiConnectionForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const urlInput = document.getElementById('settings-api-url').value.trim();
-    const msgEl = document.getElementById('api-connection-msg');
-    
-    let url = urlInput;
-    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'https://' + url;
-    }
-    if (url.endsWith('/')) {
-      url = url.slice(0, -1);
-    }
-    
-    localStorage.setItem('apiUrl', url);
-    API_URL = url;
-    
-    msgEl.textContent = 'Servidor guardado correctamente. Recargando...';
-    msgEl.style.color = 'var(--success)';
-    
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
+function exportClientsCSV() {
+  const headers = ['ID', 'Nombre', 'Teléfono', 'Correo', 'Notas', 'Fecha Registro'];
+  const rows = state.clients.map(c => [
+    c.id, c.name, c.phone || '', c.email || '', (c.notes || '').replace(/"/g, '""'), c.createdAt
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
   });
+  
+  downloadCSV(csvContent, `clientes_${new Date().toISOString().split('T')[0]}.csv`);
 }
 
-const testApiUrlBtn = document.getElementById('test-api-url-btn');
-if (testApiUrlBtn) {
-  testApiUrlBtn.addEventListener('click', async () => {
-    const urlInput = document.getElementById('settings-api-url').value.trim();
-    const msgEl = document.getElementById('api-connection-msg');
-    if (!urlInput) {
-      msgEl.textContent = 'Por favor ingresa una URL válida.';
-      msgEl.style.color = 'var(--danger)';
-      return;
-    }
-    
-    let url = urlInput;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'https://' + url;
-    }
-    if (url.endsWith('/')) {
-      url = url.slice(0, -1);
-    }
-    
-    msgEl.textContent = 'Probando conexión...';
-    msgEl.style.color = 'var(--text-muted)';
-    testApiUrlBtn.disabled = true;
-    
-    try {
-      const response = await fetch(`${url}/api/health`, { method: 'GET' });
-      const data = await response.json();
-      if (response.ok && data.status === 'ok') {
-        msgEl.textContent = 'Conexión exitosa con el servidor.';
-        msgEl.style.color = 'var(--success)';
-      } else {
-        msgEl.textContent = 'Respuesta inesperada del servidor.';
-        msgEl.style.color = 'var(--warning)';
-      }
-    } catch (err) {
-      msgEl.textContent = 'No se pudo conectar al servidor: ' + err.message;
-      msgEl.style.color = 'var(--danger)';
-    } finally {
-      testApiUrlBtn.disabled = false;
-    }
+function exportLoansCSV() {
+  const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
+  const rows = state.loans.map(l => [
+    l.id, l.clientName, l.amount, l.rate, FREQUENCIES[l.frequency]?.name || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
   });
+  
+  downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
 }
 
-// FIN del script

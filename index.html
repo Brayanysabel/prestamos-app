@@ -6,7 +6,7 @@
   <title>PrestamosApp - Sistema de Gestión de Préstamos</title>
   <!-- SEO Meta Tags -->
   <meta name="description" content="Aplicación web moderna y minimalista para simular, otorgar, gestionar y cobrar préstamos.">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
   <!-- Soporte para PWA e iOS -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#09090b">
@@ -317,9 +317,14 @@
       <section id="sec-clients" class="app-section">
         <div class="search-bar">
           <input type="text" id="client-search" class="search-input" placeholder="Buscar cliente por nombre o teléfono...">
-          <button id="add-client-btn" class="btn btn-primary">
-            <i data-lucide="user-plus"></i> Registrar Cliente
-          </button>
+          <div style="display: flex; gap: 10px;">
+            <button id="export-clients-btn" class="btn btn-secondary" onclick="exportClientsCSV()" title="Exportar a Excel (CSV)">
+              <i data-lucide="download"></i> Exportar CSV
+            </button>
+            <button id="add-client-btn" class="btn btn-primary">
+              <i data-lucide="user-plus"></i> Registrar Cliente
+            </button>
+          </div>
         </div>
         
         <div class="card">
@@ -356,9 +361,14 @@
                 <option value="overdue">Vencidos</option>
               </select>
             </div>
-            <button id="new-loan-shortcut-btn" class="btn btn-primary">
-              <i data-lucide="plus-circle"></i> Nuevo Préstamo
-            </button>
+            <div style="display: flex; gap: 10px;">
+              <button id="export-loans-btn" class="btn btn-secondary" onclick="exportLoansCSV()" title="Exportar a Excel (CSV)">
+                <i data-lucide="download"></i> Exportar CSV
+              </button>
+              <button id="new-loan-shortcut-btn" class="btn btn-primary">
+                <i data-lucide="plus-circle"></i> Nuevo Préstamo
+              </button>
+            </div>
           </div>
         </div>
         
@@ -581,7 +591,7 @@
             <input type="text" id="client-name" placeholder="Ej. Juan Pérez" required>
           </div>
           <div class="form-group mb-4">
-            <label for="client-phone">Teléfono de Contacto</label>
+            <label for="client-phone">Celular / WhatsApp</label>
             <input type="tel" id="client-phone" placeholder="Ej. +1 809-555-0123" required>
           </div>
           <div class="form-group mb-4">
@@ -778,9 +788,15 @@
             <label for="pay-amount-input">Monto a Cobrar ($)</label>
             <input type="number" id="pay-amount-input" step="any" min="0.01" required>
           </div>
-          <div class="form-group">
+          <div class="form-group mb-4">
             <label for="pay-date-input">Fecha del Pago</label>
             <input type="date" id="pay-date-input" required>
+          </div>
+          <div class="form-group" id="pay-email-group" style="display: none;">
+            <label style="display:flex; align-items:center; gap:8px; font-weight: normal; cursor: pointer;">
+              <input type="checkbox" id="pay-send-email-checkbox">
+              Enviar recibo por correo al cliente
+            </label>
           </div>
         </div>
         <div class="modal-footer">
