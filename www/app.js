@@ -425,7 +425,7 @@ function switchSection(targetSectionId) {
     targetSection.classList.add('active');
   }
   
-  const targetLink = document.querySelector(`.nav-link[data-target="${targetSectionId}"]`);
+  const targetLink = document.querySelector(`.nav-item[data-target="${targetSectionId}"]`);
   if (targetLink) {
     targetLink.classList.add('active');
   }

@@ -1,6 +1,6 @@
-// PrestamosApp - Lógica de Negocio e Interfaz de Usuario
+﻿// PrestamosApp - LÃ³gica de Negocio e Interfaz de Usuario
 
-// --- 1. ESTADO DE LA APLICACIÓN ---
+// --- 1. ESTADO DE LA APLICACIÃ“N ---
 let state = {
   clients: [],
   loans: [],
@@ -12,10 +12,10 @@ const FREQUENCIES = {
   monthly: { name: 'Mensual', periodsPerYear: 12, label: 'meses' },
   biweekly: { name: 'Quincenal', periodsPerYear: 24, label: 'quincenas' },
   weekly: { name: 'Semanal', periodsPerYear: 52, label: 'semanas' },
-  daily: { name: 'Diario', periodsPerYear: 365, label: 'días' }
+  daily: { name: 'Diario', periodsPerYear: 365, label: 'dÃ­as' }
 };
 
-// Variable para almacenar el préstamo calculado temporalmente antes de otorgarlo
+// Variable para almacenar el prÃ©stamo calculado temporalmente antes de otorgarlo
 let calculatedLoanTemp = null;
 
 // Instancias de Chart.js globales para poder destruirlas y recrearlas
@@ -79,7 +79,7 @@ function showLogin() {
   document.getElementById('main-app').classList.add('d-none');
 }
 
-// Lógica del formulario de login
+// LÃ³gica del formulario de login
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const user = document.getElementById('login-username').value;
@@ -93,7 +93,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       body: JSON.stringify({ username: user, password: pass })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error de autenticación');
+    if (!res.ok) throw new Error(data.error || 'Error de autenticaciÃ³n');
     
     localStorage.setItem('prestamos_auth_token', data.token);
     errorEl.classList.add('d-none');
@@ -117,42 +117,42 @@ function seedMockData() {
   const mockClients = [
     {
       id: "cli_1",
-      name: "Juan Carlos Pérez",
+      name: "Juan Carlos PÃ©rez",
       phone: "+1 809-555-0101",
       email: "juan.perez@email.com",
       notes: "Cliente recurrente, excelente historial de pago. Propietario de colmado.",
-      createdAt: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString() // Hace 90 días
+      createdAt: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString() // Hace 90 dÃ­as
     },
     {
       id: "cli_2",
-      name: "María Altagracia Gómez",
+      name: "MarÃ­a Altagracia GÃ³mez",
       phone: "+1 809-555-0202",
       email: "maria.gomez@email.com",
-      notes: "Puntual en cuotas quincenales. Salón de belleza.",
-      createdAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString() // Hace 60 días
+      notes: "Puntual en cuotas quincenales. SalÃ³n de belleza.",
+      createdAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString() // Hace 60 dÃ­as
     },
     {
       id: "cli_3",
-      name: "Pedro Ignacio Sánchez",
+      name: "Pedro Ignacio SÃ¡nchez",
       phone: "+1 829-555-0303",
       email: "pedro.sanchez@email.com",
       notes: "Taxista independiente. Solicita cobros semanales.",
-      createdAt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString() // Hace 30 días
+      createdAt: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString() // Hace 30 dÃ­as
     },
     {
       id: "cli_4",
-      name: "Sofía Elena Mendoza",
+      name: "SofÃ­a Elena Mendoza",
       phone: "+1 849-555-0404",
       email: "sofia.mendoza@email.com",
-      notes: "Nueva cliente, recomendada por Juan Pérez.",
+      notes: "Nueva cliente, recomendada por Juan PÃ©rez.",
       createdAt: now.toISOString()
     }
   ];
 
-  // Préstamos Semilla
-  // 1. Préstamo de Juan Pérez: Pagado. Monto: $1000, 10% interes anual, 3 cuotas mensuales, Francés. Creado hace 90 días.
+  // PrÃ©stamos Semilla
+  // 1. PrÃ©stamo de Juan PÃ©rez: Pagado. Monto: $1000, 10% interes anual, 3 cuotas mensuales, FrancÃ©s. Creado hace 90 dÃ­as.
   const loan1Date = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const loan1 = generateLoanObject("cli_1", "Juan Carlos Pérez", 1000, 12, 'annual', 3, "monthly", "french", loan1Date);
+  const loan1 = generateLoanObject("cli_1", "Juan Carlos PÃ©rez", 1000, 12, 'annual', 3, "monthly", "french", loan1Date);
   // Marcar todas las cuotas como pagadas
   loan1.instalments.forEach((inst, index) => {
     inst.status = 'paid';
@@ -167,9 +167,9 @@ function seedMockData() {
   loan1.remainingBalance = 0;
   loan1.status = 'paid';
 
-  // 2. Préstamo de María Gómez: Activo con abonos. Monto: $2000, 15% interés anual, 6 cuotas quincenales, Francés. Creado hace 45 días.
+  // 2. PrÃ©stamo de MarÃ­a GÃ³mez: Activo con abonos. Monto: $2000, 15% interÃ©s anual, 6 cuotas quincenales, FrancÃ©s. Creado hace 45 dÃ­as.
   const loan2Date = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
-  const loan2 = generateLoanObject("cli_2", "María Altagracia Gómez", 2000, 15, 'annual', 6, "biweekly", "french", loan2Date);
+  const loan2 = generateLoanObject("cli_2", "MarÃ­a Altagracia GÃ³mez", 2000, 15, 'annual', 6, "biweekly", "french", loan2Date);
   // Pagar las primeras 3 cuotas
   let totalPaidL2 = 0;
   for (let i = 0; i < 3; i++) {
@@ -186,10 +186,10 @@ function seedMockData() {
   loan2.remainingBalance = parseFloat((loan2.totalPayable - totalPaidL2).toFixed(2));
   loan2.status = 'active';
 
-  // 3. Préstamo de Pedro Sánchez: Vencido (Atrasado). Monto: $1500, 18% interés anual, 4 cuotas semanales, Francés. Creado hace 25 días.
-  // Como es semanal, ya pasaron las 4 semanas. Supongamos que solo pagó la cuota 1 y 2. La 3 y 4 están vencidas.
+  // 3. PrÃ©stamo de Pedro SÃ¡nchez: Vencido (Atrasado). Monto: $1500, 18% interÃ©s anual, 4 cuotas semanales, FrancÃ©s. Creado hace 25 dÃ­as.
+  // Como es semanal, ya pasaron las 4 semanas. Supongamos que solo pagÃ³ la cuota 1 y 2. La 3 y 4 estÃ¡n vencidas.
   const loan3Date = new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000);
-  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio Sánchez", 1500, 18, 'annual', 4, "weekly", "french", loan3Date);
+  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio SÃ¡nchez", 1500, 18, 'annual', 4, "weekly", "french", loan3Date);
   
   // Pagar cuota 1 y 2
   let totalPaidL3 = 0;
@@ -220,14 +220,14 @@ function seedMockData() {
   refreshAll();
 }
 
-// --- 3. MOTOR MATEMÁTICO DE PRÉSTAMOS ---
+// --- 3. MOTOR MATEMÃTICO DE PRÃ‰STAMOS ---
 
-// Función para calcular amortización
+// FunciÃ³n para calcular amortizaciÃ³n
 function calculateAmortization(amount, rate, rateType, term, frequency, type, startDate) {
   const freqData = FREQUENCIES[frequency];
   const periodsPerYear = freqData.periodsPerYear;
   
-  // Convertir tasa a anual según el tipo
+  // Convertir tasa a anual segÃºn el tipo
   let annualRate = rate;
   if (rateType === 'monthly') {
     annualRate = rate * 12;
@@ -235,7 +235,7 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
     annualRate = rate * 365;
   }
   
-  // Tasa de interés por período
+  // Tasa de interÃ©s por perÃ­odo
   const ratePerPeriod = (annualRate / 100) / periodsPerYear;
   
   let instalments = [];
@@ -245,7 +245,7 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
   let start = new Date(startDate);
   
   if (type === 'french') {
-    // Sistema Francés: Cuota Fija
+    // Sistema FrancÃ©s: Cuota Fija
     // P = A * (r * (1 + r)^n) / ((1 + r)^n - 1)
     let fixedPayment = 0;
     if (ratePerPeriod === 0) {
@@ -261,7 +261,7 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
       let interest = parseFloat((remainingBalance * ratePerPeriod).toFixed(2));
       let capital = parseFloat((fixedPayment - interest).toFixed(2));
       
-      // Ajuste en la última cuota para cuadrar redondeos
+      // Ajuste en la Ãºltima cuota para cuadrar redondeos
       if (i === term) {
         capital = remainingBalance;
         fixedPayment = parseFloat((capital + interest).toFixed(2));
@@ -297,8 +297,8 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
       interestAmount += interest;
     }
   } else {
-    // Interés Simple
-    // Total Interés = Principal * Tasa Periodo * Term
+    // InterÃ©s Simple
+    // Total InterÃ©s = Principal * Tasa Periodo * Term
     const totalInterest = parseFloat((amount * ratePerPeriod * term).toFixed(2));
     const totalSum = amount + totalInterest;
     const fixedPayment = parseFloat((totalSum / term).toFixed(2));
@@ -368,7 +368,7 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
   };
 }
 
-// Genera un objeto completo de préstamo asignando ID y Cliente
+// Genera un objeto completo de prÃ©stamo asignando ID y Cliente
 function generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate) {
   const loanDetails = calculateAmortization(amount, rate, rateType, term, frequency, type, startDate);
   const loanId = "loan_" + Math.random().toString(36).substring(2, 9);
@@ -407,11 +407,11 @@ const sectionTitle = document.getElementById('section-title');
 const sectionSubtitle = document.getElementById('section-subtitle');
 
 const sectionMeta = {
-  dashboard: { title: 'Dashboard', subtitle: 'Vista general del estado de tus préstamos.' },
-  calculator: { title: 'Calculadora de Préstamos', subtitle: 'Simula créditos y proyecta tablas de amortización.' },
-  clients: { title: 'Gestión de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
-  loans: { title: 'Préstamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
-  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' }
+  dashboard: { title: 'Dashboard', subtitle: 'Vista general del estado de tus prÃ©stamos.' },
+  calculator: { title: 'Calculadora de PrÃ©stamos', subtitle: 'Simula crÃ©ditos y proyecta tablas de amortizaciÃ³n.' },
+  clients: { title: 'GestiÃ³n de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
+  loans: { title: 'PrÃ©stamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
+  settings: { title: 'Ajustes del Sistema', subtitle: 'GestiÃ³n de la base de datos y preferencias visuales.' }
 };
 
 function switchSection(targetSectionId) {
@@ -419,13 +419,13 @@ function switchSection(targetSectionId) {
   sections.forEach(sec => sec.classList.remove('active'));
   navLinks.forEach(link => link.classList.remove('active'));
   
-  // Activar la sección correspondiente
+  // Activar la secciÃ³n correspondiente
   const targetSection = document.getElementById(`sec-${targetSectionId}`);
   if (targetSection) {
     targetSection.classList.add('active');
   }
   
-  const targetLink = document.querySelector(`.nav-link[data-target="${targetSectionId}"]`);
+  const targetLink = document.querySelector(`.nav-item[data-target="${targetSectionId}"]`);
   if (targetLink) {
     targetLink.classList.add('active');
   }
@@ -437,7 +437,7 @@ function switchSection(targetSectionId) {
     sectionSubtitle.textContent = meta.subtitle;
   }
   
-  // Actualizar datos de la sección específica
+  // Actualizar datos de la secciÃ³n especÃ­fica
   if (targetSectionId === 'dashboard') {
     renderDashboard();
   } else if (targetSectionId === 'clients') {
@@ -457,7 +457,7 @@ navLinks.forEach(link => {
   });
 });
 
-// Registrar eventos de botones rápidos
+// Registrar eventos de botones rÃ¡pidos
 const qlb=document.getElementById('quick-loan-btn'); if(qlb) qlb.addEventListener('click', () => {
   switchSection('calculator');
 });
@@ -465,7 +465,7 @@ const nlsb=document.getElementById('new-loan-shortcut-btn'); if(nlsb) nlsb.addEv
   switchSection('calculator');
 });
 
-// --- 5. LÓGICA DE NEGOCIO EN EL FRONTEND ---
+// --- 5. LÃ“GICA DE NEGOCIO EN EL FRONTEND ---
 
 // Variable global para ajustes
 window.appSettings = {};
@@ -498,7 +498,7 @@ function populateClientSelect() {
 
 // 5.1 RENDERIZAR DASHBOARD
 function renderDashboard() {
-  // Comprobar estado de los préstamos por fecha de vencimiento (marcar Overdue si aplica)
+  // Comprobar estado de los prÃ©stamos por fecha de vencimiento (marcar Overdue si aplica)
   checkOverdueLoans();
 
   let totalCapital = 0;
@@ -509,7 +509,7 @@ function renderDashboard() {
   let paidCount = 0;
   let overdueCount = 0;
 
-  // Mapa de cobros por mes para el gráfico
+  // Mapa de cobros por mes para el grÃ¡fico
   // Estructura: { '2026-06': { capital: X, interest: Y } }
   const collectionsByMonth = {};
 
@@ -525,13 +525,13 @@ function renderDashboard() {
       inst.payments.forEach(pay => {
         totalCollected += pay.amount;
         
-        // Agrupar pagos por mes para la gráfica
+        // Agrupar pagos por mes para la grÃ¡fica
         const monthKey = pay.date.substring(0, 7); // 'YYYY-MM'
         if (!collectionsByMonth[monthKey]) {
           collectionsByMonth[monthKey] = { capital: 0, interest: 0 };
         }
         
-        // Dividir proporcionalmente el abono entre capital e interés en la cuota
+        // Dividir proporcionalmente el abono entre capital e interÃ©s en la cuota
         const ratio = inst.capital / (inst.capital + inst.interest || 1);
         const capContribution = pay.amount * ratio;
         const intContribution = pay.amount * (1 - ratio);
@@ -551,7 +551,7 @@ function renderDashboard() {
   document.getElementById('kpi-collected').textContent = formatCurrency(totalCollected);
   document.getElementById('kpi-balance').textContent = formatCurrency(totalBalance);
 
-  // Renderizar gráficos
+  // Renderizar grÃ¡ficos
   renderStatusChart(activeCount, paidCount, overdueCount);
   renderCollectionsChart(collectionsByMonth);
   renderRecentPayments();
@@ -620,7 +620,7 @@ function renderRecentPayments() {
   // Ordenar por fecha descendente
   allPayments.sort((a, b) => b.date.localeCompare(a.date));
   
-  // Tomar los 5 más recientes
+  // Tomar los 5 mÃ¡s recientes
   const recent = allPayments.slice(0, 5);
 
   if (recent.length === 0) {
@@ -642,7 +642,7 @@ function renderRecentPayments() {
   });
 }
 
-// Gráfico: Estado de Préstamos
+// GrÃ¡fico: Estado de PrÃ©stamos
 function renderStatusChart(active, paid, overdue) {
   const ctx = document.getElementById('statusChart').getContext('2d');
   
@@ -653,7 +653,7 @@ function renderStatusChart(active, paid, overdue) {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const labelColor = isDark ? '#fafafa' : '#09090b';
 
-  // Si no hay datos, mostrar vacío
+  // Si no hay datos, mostrar vacÃ­o
   if (active === 0 && paid === 0 && overdue === 0) {
     active = 1; // Solo para que dibuje algo neutro
   }
@@ -690,7 +690,7 @@ function renderStatusChart(active, paid, overdue) {
   });
 }
 
-// Gráfico: Recaudaciones por Mes
+// GrÃ¡fico: Recaudaciones por Mes
 function renderCollectionsChart(collectionsByMonth) {
   const ctx = document.getElementById('collectionsChart').getContext('2d');
   
@@ -703,7 +703,7 @@ function renderCollectionsChart(collectionsByMonth) {
   const gridColor = isDark ? '#27272a' : '#e4e4e7';
   const titleColor = isDark ? '#fafafa' : '#09090b';
 
-  // Ordenar meses cronológicamente
+  // Ordenar meses cronolÃ³gicamente
   const sortedMonths = Object.keys(collectionsByMonth).sort();
   
   // Si no hay cobros, rellenar con meses de prueba neutros
@@ -763,7 +763,7 @@ function renderCollectionsChart(collectionsByMonth) {
   });
 }
 
-// 5.2 LÓGICA DE LA CALCULADORA
+// 5.2 LÃ“GICA DE LA CALCULADORA
 const calculatorForm = document.getElementById('calculator-form');
 const calcResultCard = document.getElementById('calc-result-card');
 const calcAmortizationTable = document.getElementById('calc-amortization-table');
@@ -792,22 +792,22 @@ calculatorForm.addEventListener('submit', (e) => {
     if (client) clientName = client.name;
   }
 
-  // Generar objeto préstamo temporal
+  // Generar objeto prÃ©stamo temporal
   calculatedLoanTemp = generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate);
 
-  // Renderizar la tabla de amortización calculada
+  // Renderizar la tabla de amortizaciÃ³n calculada
   renderAmortizationTable(calculatedLoanTemp.instalments);
   
   // Resumen
   const freqName = FREQUENCIES[frequency].name;
-  const typeName = type === 'french' ? 'Francés (Cuota Fija)' : 'Simple (Cuota Lineal)';
+  const typeName = type === 'french' ? 'FrancÃ©s (Cuota Fija)' : 'Simple (Cuota Lineal)';
   const rateLabel = rateType === 'annual' ? 'anual' : rateType === 'monthly' ? 'mensual' : 'diario';
-  calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% ${rateLabel}</strong>.`;
+  calcSummaryText.innerHTML = `PrÃ©stamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% ${rateLabel}</strong>.`;
   calcTotalPayableBadge.textContent = `Total a Pagar: ${formatCurrency(calculatedLoanTemp.totalPayable)}`;
 
   calcResultCard.classList.remove('d-none');
   
-  // Habilitar botón para otorgar
+  // Habilitar botÃ³n para otorgar
   if (clientId) {
     calcGrantBtn.removeAttribute('disabled');
     calcGrantBtn.classList.remove('btn-secondary');
@@ -816,14 +816,14 @@ calculatorForm.addEventListener('submit', (e) => {
     calcGrantBtn.setAttribute('disabled', 'true');
     calcGrantBtn.classList.add('btn-secondary');
     calcGrantBtn.classList.remove('btn-primary');
-    calcSummaryText.innerHTML += " <br><span style='color: var(--danger); font-size: 0.8rem;'>* Seleccione un cliente para habilitar el otorgamiento oficial del préstamo.</span>";
+    calcSummaryText.innerHTML += " <br><span style='color: var(--danger); font-size: 0.8rem;'>* Seleccione un cliente para habilitar el otorgamiento oficial del prÃ©stamo.</span>";
   }
   
   // Re-inicializar iconos de la tabla
   lucide.createIcons();
 });
 
-// Renderizar filas de la tabla de amortización generada
+// Renderizar filas de la tabla de amortizaciÃ³n generada
 function renderAmortizationTable(instalments) {
   calcAmortizationTable.innerHTML = '';
   
@@ -837,13 +837,13 @@ function renderAmortizationTable(instalments) {
       <td class="number-cell text-right" style="color: var(--text-muted);">${formatCurrency(inst.interest)}</td>
       <td class="number-cell text-right">${formatCurrency(inst.dueDate ? inst.dueDate : 0)}</td>
     `;
-    // En la última celda de saldo restante, calculamos el acumulado decreciente
+    // En la Ãºltima celda de saldo restante, calculamos el acumulado decreciente
     // Para simplificar la vista, pasamos el saldo ya calculado en el objeto inst
     // Espera, no guardamos el saldo restante exacto por cuota en el objeto inst dentro de calculateAmortization.
-    // Vamos a corregir la celda de "Saldo Restante" calculándola al vuelo en la UI.
+    // Vamos a corregir la celda de "Saldo Restante" calculÃ¡ndola al vuelo en la UI.
   });
   
-  // Corrección de la renderización del saldo restante decreciente
+  // CorrecciÃ³n de la renderizaciÃ³n del saldo restante decreciente
   calcAmortizationTable.innerHTML = '';
   let currentBalance = calculatedLoanTemp.totalPayable;
   
@@ -864,11 +864,11 @@ function renderAmortizationTable(instalments) {
   });
 }
 
-// Otorgar Préstamo Oficialmente
+// Otorgar PrÃ©stamo Oficialmente
 calcGrantBtn.addEventListener('click', async () => {
   if (!calculatedLoanTemp || !calculatedLoanTemp.clientId) return;
   
-  if (confirm(`¿Está seguro de otorgar este préstamo de ${formatCurrency(calculatedLoanTemp.amount)} a ${calculatedLoanTemp.clientName}?`)) {
+  if (confirm(`Â¿EstÃ¡ seguro de otorgar este prÃ©stamo de ${formatCurrency(calculatedLoanTemp.amount)} a ${calculatedLoanTemp.clientName}?`)) {
     try {
       await apiRequest('/loans', {
         method: 'POST',
@@ -882,16 +882,16 @@ calcGrantBtn.addEventListener('click', async () => {
       calcGrantBtn.setAttribute('disabled', 'true');
       calculatedLoanTemp = null;
       
-      // Recargar datos e ir a pestaña de Préstamos
+      // Recargar datos e ir a pestaÃ±a de PrÃ©stamos
       await loadData();
       switchSection('loans');
     } catch (error) {
-      alert("Error al otorgar préstamo: " + error.message);
+      alert("Error al otorgar prÃ©stamo: " + error.message);
     }
   }
 });
 
-// 5.3 GESTIÓN DE CLIENTES
+// 5.3 GESTIÃ“N DE CLIENTES
 const clientSearch = document.getElementById('client-search');
 const clientsTableBody = document.getElementById('clients-table-body');
 const clientForm = document.getElementById('client-form');
@@ -915,8 +915,8 @@ clientForm.addEventListener('submit', async (e) => {
   const notes = document.getElementById('client-notes').value.trim();
   
   if (id) {
-    // Editar existente (no soportado en esta demo del backend, pero se mantendría la lógica)
-    alert("Edición en el backend próximamente.");
+    // Editar existente (no soportado en esta demo del backend, pero se mantendrÃ­a la lÃ³gica)
+    alert("EdiciÃ³n en el backend prÃ³ximamente.");
   } else {
     // Nuevo cliente
     try {
@@ -948,7 +948,7 @@ function getClientActiveDebt(clientId) {
   return parseFloat(debt.toFixed(2));
 }
 
-// Cantidad de préstamos de un cliente
+// Cantidad de prÃ©stamos de un cliente
 function getClientLoansCount(clientId) {
   return state.loans.filter(l => l.clientId === clientId).length;
 }
@@ -1042,13 +1042,13 @@ function viewClientDetail(id) {
   document.getElementById('client-detail-debt').style.color = debt > 0 ? 'var(--danger)' : 'var(--success)';
   document.getElementById('client-detail-notes').textContent = client.notes || 'Ninguna nota cargada.';
   
-  // Renderizar historial de préstamos del cliente
+  // Renderizar historial de prÃ©stamos del cliente
   const clientLoans = state.loans.filter(l => l.clientId === id);
   const listContainer = document.getElementById('client-detail-loans-list');
   listContainer.innerHTML = '';
   
   if (clientLoans.length === 0) {
-    listContainer.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">El cliente no registra préstamos.</td></tr>';
+    listContainer.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">El cliente no registra prÃ©stamos.</td></tr>';
   } else {
     clientLoans.forEach(loan => {
       let statusBadge = '';
@@ -1077,7 +1077,7 @@ function viewClientDetail(id) {
   lucide.createIcons();
 }
 
-// 5.4 GESTIÓN DE PRÉSTAMOS
+// 5.4 GESTIÃ“N DE PRÃ‰STAMOS
 const loanSearch = document.getElementById('loan-search');
 const loanStatusFilter = document.getElementById('loan-status-filter');
 const loansTableBody = document.getElementById('loans-table-body');
@@ -1085,7 +1085,7 @@ const loansTableBody = document.getElementById('loans-table-body');
 loanSearch.addEventListener('input', () => renderLoansTable());
 loanStatusFilter.addEventListener('change', () => renderLoansTable());
 
-// Renderizar tabla de préstamos generales
+// Renderizar tabla de prÃ©stamos generales
 function renderLoansTable() {
   const query = loanSearch.value.toLowerCase().trim();
   const statusFilter = loanStatusFilter.value;
@@ -1099,11 +1099,11 @@ function renderLoansTable() {
     return matchesSearch && matchesStatus;
   });
   
-  // Ordenar por ID o fecha (por defecto descendente para ver los más nuevos primero)
+  // Ordenar por ID o fecha (por defecto descendente para ver los mÃ¡s nuevos primero)
   filtered.reverse();
 
   if (filtered.length === 0) {
-    loansTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No se encontraron préstamos.</td></tr>';
+    loansTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No se encontraron prÃ©stamos.</td></tr>';
     return;
   }
 
@@ -1113,7 +1113,7 @@ function renderLoansTable() {
     else if (loan.status === 'overdue') statusBadge = '<span class="badge badge-danger">Vencido</span>';
     else statusBadge = '<span class="badge badge-primary">Activo</span>';
 
-    // Próxima cuota pendiente
+    // PrÃ³xima cuota pendiente
     const nextInst = loan.instalments.find(inst => inst.status !== 'paid');
     const nextPayText = nextInst ? `${formatDateReadable(nextInst.dueDate)} (Cuota ${nextInst.index})` : 'Ninguna';
 
@@ -1138,7 +1138,7 @@ function renderLoansTable() {
   lucide.createIcons();
 }
 
-// Ver ficha detallada de un Préstamo
+// Ver ficha detallada de un PrÃ©stamo
 function viewLoanDetail(loanId) {
   const loan = state.loans.find(l => l.id === loanId);
   if (!loan) return;
@@ -1147,7 +1147,7 @@ function viewLoanDetail(loanId) {
   document.getElementById('loan-detail-client').textContent = loan.clientName;
   document.getElementById('loan-detail-date').textContent = formatDateReadable(loan.startDate);
   
-  const typeName = loan.type === 'french' ? 'Sistema Francés' : 'Interés Simple';
+  const typeName = loan.type === 'french' ? 'Sistema FrancÃ©s' : 'InterÃ©s Simple';
   document.getElementById('loan-detail-type').textContent = typeName;
   
   const freqName = FREQUENCIES[loan.frequency].name;
@@ -1163,7 +1163,7 @@ function viewLoanDetail(loanId) {
   document.getElementById('loan-detail-paid-amount').textContent = formatCurrency(totalPaid);
   document.getElementById('loan-detail-remaining-amount').textContent = formatCurrency(loan.remainingBalance);
   
-  // Badge de Estado del Préstamo
+  // Badge de Estado del PrÃ©stamo
   const badge = document.getElementById('loan-detail-status-badge');
   badge.className = 'badge';
   if (loan.status === 'paid') {
@@ -1187,7 +1187,7 @@ function viewLoanDetail(loanId) {
     else if (inst.status === 'overdue') instStatusBadge = '<span class="badge badge-danger">Vencido</span>';
     else instStatusBadge = '<span class="badge badge-warning">Pendiente</span>';
 
-    // Botón de acción para cobrar cuota
+    // BotÃ³n de acciÃ³n para cobrar cuota
     let actionBtn = '';
     if (inst.status !== 'paid') {
       actionBtn = `<button class="btn btn-primary btn-sm" onclick="openPayCuotaModal('${loan.id}', ${inst.index})">
@@ -1239,7 +1239,7 @@ function openPayCuotaModal(loanId, cuotaIndex) {
   document.getElementById('pay-cuota-index').value = cuotaIndex;
   
   document.getElementById('pay-client-name').textContent = loan.clientName;
-  document.getElementById('pay-cuota-num').textContent = `Cuota Nº ${inst.index} de ${loan.term}`;
+  document.getElementById('pay-cuota-num').textContent = `Cuota NÂº ${inst.index} de ${loan.term}`;
   document.getElementById('pay-suggested-amount').textContent = formatCurrency(inst.amount);
   document.getElementById('pay-previous-paid').textContent = formatCurrency(inst.paid);
   
@@ -1262,7 +1262,7 @@ function openPayCuotaModal(loanId, cuotaIndex) {
     emailCheckbox.checked = false;
   }
   
-  // Cerrar el modal detalle del préstamo momentáneamente para evitar apilamiento visual confuso, o dejar que se apile.
+  // Cerrar el modal detalle del prÃ©stamo momentÃ¡neamente para evitar apilamiento visual confuso, o dejar que se apile.
   // Es mejor cerrar el detalle y que al guardar el pago volvamos a abrirlo.
   closeModal('modal-loan-detail');
   openModal('modal-pay-cuota');
@@ -1291,12 +1291,12 @@ payCuotaForm.addEventListener('submit', async (e) => {
     if (sendEmail) {
       const loan = state.loans.find(l => l.id === loanId);
       const client = state.clients.find(c => c.id === loan.clientId);
-      const companyName = window.appSettings.companyName || 'PréstamosApp';
+      const companyName = window.appSettings.companyName || 'PrÃ©stamosApp';
       const smtpUser = document.getElementById('smtp-user') ? document.getElementById('smtp-user').value : '';
       const smtpPass = document.getElementById('smtp-pass') ? document.getElementById('smtp-pass').value : '';
       
       if (client && client.email && smtpUser && smtpPass) {
-        const textContent = `Hola ${client.name},\n\nAcabamos de registrar tu pago de ${formatCurrency(payAmount)} para la cuota ${cuotaIndex} de tu préstamo #${loan.id.substring(0,8)}.\n\nGracias,\n${companyName}`;
+        const textContent = `Hola ${client.name},\n\nAcabamos de registrar tu pago de ${formatCurrency(payAmount)} para la cuota ${cuotaIndex} de tu prÃ©stamo #${loan.id.substring(0,8)}.\n\nGracias,\n${companyName}`;
         try {
           await apiRequest('/notify', {
             method: 'POST',
@@ -1313,7 +1313,7 @@ payCuotaForm.addEventListener('submit', async (e) => {
           console.warn('No se pudo enviar el correo: ', err);
         }
       } else if (sendEmail) {
-        alert("Atención: Para enviar correos debes configurar tus credenciales SMTP en la pestaña de Configuración.");
+        alert("AtenciÃ³n: Para enviar correos debes configurar tus credenciales SMTP en la pestaÃ±a de ConfiguraciÃ³n.");
       }
     }
     
@@ -1325,7 +1325,7 @@ payCuotaForm.addEventListener('submit', async (e) => {
   }
 });
 
-// --- 6. FUNCIONALIDADES DE AJUSTES Y CONFIGURACIÓN ---
+// --- 6. FUNCIONALIDADES DE AJUSTES Y CONFIGURACIÃ“N ---
 
 // Alternar Tema (Modo Claro / Oscuro)
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -1350,7 +1350,7 @@ function applyTheme(theme) {
   }
   lucide.createIcons();
 
-  // Re-dibujar gráficos si están activos para adaptar colores de fuente
+  // Re-dibujar grÃ¡ficos si estÃ¡n activos para adaptar colores de fuente
   const activeLink = document.querySelector('.nav-item.active');
   if (activeLink && activeLink.getAttribute('data-target') === 'dashboard') {
     renderDashboard();
@@ -1395,7 +1395,7 @@ fileInput.addEventListener('change', (e) => {
       if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
         state = importedState;
         saveState();
-        alert("¡Base de datos restaurada correctamente!");
+        alert("Â¡Base de datos restaurada correctamente!");
         refreshAll();
       } else {
         alert("El archivo de respaldo no tiene el formato correcto.");
@@ -1410,14 +1410,14 @@ fileInput.addEventListener('change', (e) => {
 
 // Semilla de prueba
 document.getElementById('settings-seed-btn').addEventListener('click', () => {
-  if (confirm("¿Desea cargar los datos de prueba? Esto sobrescribirá sus datos actuales.")) {
+  if (confirm("Â¿Desea cargar los datos de prueba? Esto sobrescribirÃ¡ sus datos actuales.")) {
     seedMockData();
   }
 });
 
 // Borrar todo
 document.getElementById('settings-clear-btn').addEventListener('click', () => {
-  if (confirm("¡ATENCIÓN! Esto borrará permanentemente todos sus préstamos y clientes. ¿Desea continuar?")) {
+  if (confirm("Â¡ATENCIÃ“N! Esto borrarÃ¡ permanentemente todos sus prÃ©stamos y clientes. Â¿Desea continuar?")) {
     initializeEmptyState();
     refreshAll();
     alert("Base de datos vaciada.");
@@ -1434,7 +1434,7 @@ function openModal(modalId) {
 // Cerrar Modal
 function closeModal(modalId) {
   document.getElementById(modalId).classList.remove('active');
-  // Si cerramos el modal de pago de cuota, volvemos a abrir el detalle del préstamo
+  // Si cerramos el modal de pago de cuota, volvemos a abrir el detalle del prÃ©stamo
   if (modalId === 'modal-pay-cuota') {
     const loanId = document.getElementById('pay-loan-id').value;
     if (loanId) {
@@ -1456,7 +1456,7 @@ window.addEventListener('click', (e) => {
   }
 });
 
-// Refrescar todas las pantallas (en caso de importación/seed)
+// Refrescar todas las pantallas (en caso de importaciÃ³n/seed)
 function refreshAll() {
   populateClientSelect();
   renderClientsTable();
@@ -1476,7 +1476,7 @@ if (changeCredentialsForm) {
     const errorEl = document.getElementById('change-credentials-error');
     
     if (newPass !== confPass) {
-      errorEl.textContent = 'Las contraseñas no coinciden';
+      errorEl.textContent = 'Las contraseÃ±as no coinciden';
       errorEl.classList.remove('d-none');
       return;
     }
@@ -1487,11 +1487,11 @@ if (changeCredentialsForm) {
         body: JSON.stringify({ newUsername: newUser, newPassword: newPass })
       });
       
-      alert('Credenciales actualizadas correctamente. Por favor inicie sesión nuevamente.');
+      alert('Credenciales actualizadas correctamente. Por favor inicie sesiÃ³n nuevamente.');
       changeCredentialsForm.reset();
       errorEl.classList.add('d-none');
       
-      // Forzar cierre de sesión
+      // Forzar cierre de sesiÃ³n
       localStorage.removeItem('prestamos_auth_token');
       showLogin();
     } catch (err) {
@@ -1538,25 +1538,25 @@ if (emailBackupForm) {
   });
 }
 
-// --- INSTALACIÓN DE LA PWA ---
+// --- INSTALACIÃ“N DE LA PWA ---
 let deferredPrompt;
 const installAppBtn = document.getElementById('install-app-btn');
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  // Previene que Chrome 67 y anteriores muestren automáticamente el prompt
+  // Previene que Chrome 67 y anteriores muestren automÃ¡ticamente el prompt
   e.preventDefault();
-  // Guarda el evento para poder dispararlo después.
+  // Guarda el evento para poder dispararlo despuÃ©s.
   deferredPrompt = e;
-  // Muestra el botón de instalación
+  // Muestra el botÃ³n de instalaciÃ³n
   if (installAppBtn) installAppBtn.style.display = 'flex';
 });
 
 if (installAppBtn) {
   installAppBtn.addEventListener('click', async () => {
     if (!deferredPrompt) return;
-    // Oculta nuestro botón proporcionado por la interfaz de usuario
+    // Oculta nuestro botÃ³n proporcionado por la interfaz de usuario
     installAppBtn.style.display = 'none';
-    // Muestra el prompt de instalación
+    // Muestra el prompt de instalaciÃ³n
     deferredPrompt.prompt();
     // Espera a que el usuario responda al prompt
     const { outcome } = await deferredPrompt.userChoice;
@@ -1572,7 +1572,7 @@ if (installAppBtn) {
 //   console.log('PWA was installed');
 // });
 
-// --- ELIMINACIÓN SEGURA ---
+// --- ELIMINACIÃ“N SEGURA ---
 const deleteLoanBtn = document.getElementById('delete-loan-btn');
 const deleteClientBtn = document.getElementById('delete-client-btn');
 const modalDeleteAuth = document.getElementById('modal-delete-auth');
@@ -1584,7 +1584,7 @@ if (deleteLoanBtn) {
     if (loanId && loanId !== '-') {
       document.getElementById('delete-target-id').value = loanId;
       document.getElementById('delete-target-type').value = 'loan';
-      document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente este préstamo y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
+      document.getElementById('delete-auth-warning-text').textContent = 'Esta acciÃ³n borrarÃ¡ permanentemente este prÃ©stamo y todos sus pagos asociados. Ingrese su contraseÃ±a de administrador para confirmar.';
       openModal('modal-delete-auth');
     }
   });
@@ -1592,14 +1592,14 @@ if (deleteLoanBtn) {
 
 if (deleteClientBtn) {
   deleteClientBtn.addEventListener('click', () => {
-    // Tomamos el ID del cliente de algún lugar, aunque modal-client-detail no muestra el ID directamente.
+    // Tomamos el ID del cliente de algÃºn lugar, aunque modal-client-detail no muestra el ID directamente.
     // Vamos a usar client-detail-email o pasar el ID a un campo oculto al abrir el modal.
     // Wait, let's check how the client modal is populated. It sets `currentClientId = client.id` when opened.
     // So we can rely on `currentClientId` global variable!
     if (currentClientId) {
       document.getElementById('delete-target-id').value = currentClientId;
       document.getElementById('delete-target-type').value = 'client';
-      document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente a este cliente, TODOS SUS PRÉSTAMOS y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
+      document.getElementById('delete-auth-warning-text').textContent = 'Esta acciÃ³n borrarÃ¡ permanentemente a este cliente, TODOS SUS PRÃ‰STAMOS y todos sus pagos asociados. Ingrese su contraseÃ±a de administrador para confirmar.';
       openModal('modal-delete-auth');
     }
   });
@@ -1634,7 +1634,7 @@ if (deleteAuthForm) {
       closeModal('modal-delete-auth');
       deleteAuthForm.reset();
     } catch (err) {
-      errorEl.textContent = err.message || 'Contraseña incorrecta o error al eliminar';
+      errorEl.textContent = err.message || 'ContraseÃ±a incorrecta o error al eliminar';
       errorEl.classList.remove('d-none');
     } finally {
       submitBtn.disabled = false;
@@ -1643,7 +1643,7 @@ if (deleteAuthForm) {
   });
 }
 
-// --- PERSONALIZACIÓN Y AJUSTES (CONTROL TOTAL) ---
+// --- PERSONALIZACIÃ“N Y AJUSTES (CONTROL TOTAL) ---
 async function loadSettings() {
   try {
     const response = await fetch(API_URL + '/settings');
@@ -1662,14 +1662,14 @@ async function loadSettings() {
       document.getElementById('sidebar-brand-icon').innerHTML = imgHtml;
     }
 
-    // Llenar campos de configuración si existen
+    // Llenar campos de configuraciÃ³n si existen
     if (document.getElementById('company-name-input')) document.getElementById('company-name-input').value = settings.companyName || '';
     if (document.getElementById('company-phone-input')) document.getElementById('company-phone-input').value = settings.companyPhone || '';
     if (document.getElementById('company-address-input')) document.getElementById('company-address-input').value = settings.companyAddress || '';
     if (document.getElementById('currency-symbol-input')) document.getElementById('currency-symbol-input').value = settings.currencySymbol || '$';
     if (document.getElementById('default-interest-input')) document.getElementById('default-interest-input').value = settings.defaultInterest || '';
     
-    // Auto-completar tasa de interés por defecto en la calculadora
+    // Auto-completar tasa de interÃ©s por defecto en la calculadora
     const calcRate = document.getElementById('calc-rate');
     if (calcRate && settings.defaultInterest && !calcRate.value) {
       calcRate.value = settings.defaultInterest;
@@ -1801,7 +1801,7 @@ document.getElementById('download-backup-btn')?.addEventListener('click', async 
   }
 });
 
-// Exportación CSV
+// ExportaciÃ³n CSV
 function downloadCSV(csvContent, fileName) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -1821,13 +1821,13 @@ document.getElementById('export-clients-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('export-loans-btn')?.addEventListener('click', () => {
-  if (state.loans.length === 0) return alert('No hay préstamos para exportar');
+  if (state.loans.length === 0) return alert('No hay prÃ©stamos para exportar');
   const headers = "ID,Cliente,Monto,Tasa,TipoTasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
   const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.rate}","${l.rateType || 'annual'}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'prestamos.csv');
 });
 
-// --- 8. INICIALIZACIÓN ---
+// --- 8. INICIALIZACIÃ“N ---
 document.addEventListener('DOMContentLoaded', () => {
   // Cargar tema
   const savedTheme = localStorage.getItem('prestamos_theme');
@@ -1840,7 +1840,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cargar datos principales
   loadData();
   
-  // Cargar personalización de marca
+  // Cargar personalizaciÃ³n de marca
   loadSettings();
   
   // Inicializar Lucide Icons
@@ -1876,7 +1876,7 @@ function printReceipt(loanId, cuotaIndex) {
   const inst = loan.instalments.find(i => i.index === cuotaIndex);
   if (!inst) return;
   const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
-  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  const companyName = window.appSettings.companyName || 'PrÃ©stamosApp';
   
   const receiptHTML = `
     <html>
@@ -1903,17 +1903,17 @@ function printReceipt(loanId, cuotaIndex) {
         <table>
           <tr><td>Fecha:</td><td class="right">${formatDateReadable(payment.date)}</td></tr>
           <tr><td>Cliente:</td><td class="right">${loan.clientName}</td></tr>
-          <tr><td>Préstamo:</td><td class="right">#${loan.id.substring(0,8)}</td></tr>
+          <tr><td>PrÃ©stamo:</td><td class="right">#${loan.id.substring(0,8)}</td></tr>
           <tr><td>Cuota No:</td><td class="right">${inst.index}</td></tr>
         </table>
         <div class="line"></div>
         <table>
           <tr><td>Capital:</td><td class="right">${formatCurrency(inst.capital)}</td></tr>
-          <tr><td>Interés:</td><td class="right">${formatCurrency(inst.interest)}</td></tr>
+          <tr><td>InterÃ©s:</td><td class="right">${formatCurrency(inst.interest)}</td></tr>
           <tr class="bold"><td>TOTAL PAGADO:</td><td class="right">${formatCurrency(payment.amount)}</td></tr>
         </table>
         <div class="line"></div>
-        <div class="center" style="font-size: 0.9em;">¡Gracias por su pago!</div>
+        <div class="center" style="font-size: 0.9em;">Â¡Gracias por su pago!</div>
         <div class="center" style="font-size: 0.8em; margin-top: 10px;">Balance Pendiente: ${formatCurrency(loan.remainingBalance)}</div>
         <script>
           setTimeout(() => { window.print(); window.close(); }, 500);
@@ -1937,27 +1937,27 @@ function sendWhatsAppReceipt(loanId, cuotaIndex) {
   if (!loan) return;
   const client = state.clients.find(c => c.id === loan.clientId);
   if (!client || !client.phone) {
-    alert("El cliente no tiene un número de celular registrado.");
+    alert("El cliente no tiene un nÃºmero de celular registrado.");
     return;
   }
   const inst = loan.instalments.find(i => i.index === cuotaIndex);
   if (!inst) return;
   const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
-  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  const companyName = window.appSettings.companyName || 'PrÃ©stamosApp';
   
   const textMessage = `*RECIBO DE PAGO - ${companyName}*\n` +
     `--------------------------------------\n` +
     `*Fecha:* ${formatDateReadable(payment.date)}\n` +
     `*Cliente:* ${loan.clientName}\n` +
-    `*Préstamo:* #${loan.id.substring(0,8)}\n` +
-    `*Cuota Nº:* ${inst.index}\n` +
+    `*PrÃ©stamo:* #${loan.id.substring(0,8)}\n` +
+    `*Cuota NÂº:* ${inst.index}\n` +
     `--------------------------------------\n` +
     `*Capital:* ${formatCurrency(inst.capital)}\n` +
-    `*Interés:* ${formatCurrency(inst.interest)}\n` +
+    `*InterÃ©s:* ${formatCurrency(inst.interest)}\n` +
     `*TOTAL PAGADO:* ${formatCurrency(payment.amount)}\n` +
     `--------------------------------------\n` +
     `*Balance Pendiente:* ${formatCurrency(loan.remainingBalance)}\n\n` +
-    `¡Gracias por su pago!`;
+    `Â¡Gracias por su pago!`;
     
   const cleanPhone = client.phone.replace(/\D/g, '');
   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
@@ -1977,7 +1977,7 @@ function downloadCSV(csvContent, filename) {
 }
 
 function exportClientsCSV() {
-  const headers = ['ID', 'Nombre', 'Teléfono', 'Correo', 'Notas', 'Fecha Registro'];
+  const headers = ['ID', 'Nombre', 'TelÃ©fono', 'Correo', 'Notas', 'Fecha Registro'];
   const rows = state.clients.map(c => [
     c.id, c.name, c.phone || '', c.email || '', (c.notes || '').replace(/"/g, '""'), c.createdAt
   ]);
@@ -1991,7 +1991,7 @@ function exportClientsCSV() {
 }
 
 function exportLoansCSV() {
-  const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
+  const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha CreaciÃ³n'];
   const rows = state.loans.map(l => [
     l.id, l.clientName, l.amount, l.rate, FREQUENCIES[l.frequency]?.name || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
   ]);
@@ -2004,7 +2004,7 @@ function exportLoansCSV() {
   downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
 }
 
-// --- LOGICA DE KYC Y PAGOS DIGITALES AÑADIDA ---
+// --- LOGICA DE KYC Y PAGOS DIGITALES AÃ‘ADIDA ---
 // Cambio de Metodo de Pago
 const payMethodSelect = document.getElementById('pay-method-select');
 const payCashFields = document.getElementById('pay-cash-fields');
@@ -2075,7 +2075,7 @@ if (payCuotaForm) {
   });
 }
 
-// Biometria (Cámara)
+// Biometria (CÃ¡mara)
 const kycVideo = document.getElementById('kyc-video');
 const kycCanvas = document.getElementById('kyc-canvas');
 const kycSnapshot = document.getElementById('kyc-snapshot');
@@ -2084,7 +2084,7 @@ const kycRetakeBtn = document.getElementById('kyc-retake-btn');
 const kycSubmitBtn = document.getElementById('kyc-submit-btn');
 
 let currentKycBlob = null;
-let currentClientId = null; // Guardará el cliente actual
+let currentClientId = null; // GuardarÃ¡ el cliente actual
 
 // Interceptar vista detalle para setear currentClientId y ver el KYC
 const originalViewClientDetail = viewClientDetail;
@@ -2115,8 +2115,8 @@ renderClientsTable = function() {
   rows.forEach((row, i) => {
     if(filtered[i]) {
       const kycStatus = filtered[i].kycStatus === 'verified' ? '<span class="badge badge-success">Verificado</span>' : '<span class="badge badge-warning">Pendiente</span>';
-      // Inyectar antes de "Préstamos Totales"
-      // La celda de estado KYC es la 4ta (índice 3) si contamos Nombre, Telefono, Correo, Estado KYC
+      // Inyectar antes de "PrÃ©stamos Totales"
+      // La celda de estado KYC es la 4ta (Ã­ndice 3) si contamos Nombre, Telefono, Correo, Estado KYC
       const cell = document.createElement('td');
       cell.innerHTML = kycStatus;
       row.insertBefore(cell, row.children[3]);
@@ -2147,7 +2147,7 @@ if (document.getElementById('start-kyc-btn')) {
         window.stream = stream;
         kycVideo.srcObject = stream;
       } catch(err) {
-        alert("Error accediendo a la cámara: " + err.message);
+        alert("Error accediendo a la cÃ¡mara: " + err.message);
       }
     }
   });
