@@ -51,171 +51,43 @@
           <i data-lucide="log-in"></i> Iniciar Sesión
         </button>
       </form>
-    </div>
-  </div>
+          </div>
+        </div>
 
-  <div id="app-wrapper" class="app-container d-none">
-    
-    <!-- BARRA LATERAL DE NAVEGACIÓN -->
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-icon" id="sidebar-brand-icon" style="max-width: 40px;">
-          <i data-lucide="wallet-cards"></i>
-        </div>
-        <span class="brand-name" id="sidebar-brand-name">PrestamosApp</span>
-      </div>
-      
-      <nav class="nav-menu">
-        <li>
-          <a class="nav-link active" data-target="dashboard">
-            <i data-lucide="layout-dashboard"></i>
-            <span>Dashboard</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-link" data-target="calculator">
-            <i data-lucide="calculator"></i>
-            <span>Calculadora</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-link" data-target="clients">
-            <i data-lucide="users"></i>
-            <span>Clientes</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-link" data-target="loans">
-            <i data-lucide="hand-coins"></i>
-            <span>Préstamos</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-link" data-target="settings">
-            <i data-lucide="settings"></i>
-            <span>Configuración</span>
-          </a>
-        </li>
-        <li style="margin-top: 1rem;">
-          <button id="install-app-btn" class="btn btn-primary" style="width: 100%; display: none; padding: 0.5rem;">
-            <i data-lucide="download"></i> Instalar App
-          </button>
-        </li>
-      </nav>
-      
-      <div class="sidebar-footer">
-        <button id="theme-toggle-btn" class="btn btn-secondary btn-sm" style="width: 100%; display: flex; justify-content: center; gap: 0.5rem;">
-          <i data-lucide="sun" id="theme-icon"></i>
-          <span id="theme-text">Modo Oscuro</span>
-        </button>
-        <div style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">
-          v1.0.0 &bull; Local-First
-        </div>
-      </div>
-    </aside>
-    
-    <!-- CONTENIDO PRINCIPAL -->
-    <main class="main-content">
-      
-      <!-- CABECERA SUPERIOR -->
-      <header class="top-header">
-        <div class="page-title">
-          <h1 id="section-title">Dashboard</h1>
-          <p id="section-subtitle">Vista general del estado de tus préstamos.</p>
-        </div>
-        <div class="header-actions">
-          <button id="quick-loan-btn" class="btn btn-primary">
-            <i data-lucide="plus"></i> Nuevo Préstamo
-          </button>
-        </div>
-      </header>
-      
-      <!-- ================= PESTAÑA: DASHBOARD ================= -->
-      <section id="sec-dashboard" class="app-section active">
-        <!-- KPI Grid -->
-        <div class="kpi-grid">
-          <div class="card kpi-card">
-            <div class="kpi-icon primary">
-              <i data-lucide="badge-dollar-sign"></i>
-            </div>
-            <div class="kpi-info">
-              <span class="kpi-label">Capital Lentido</span>
-              <span class="kpi-value" id="kpi-capital">$0.00</span>
-            </div>
-          </div>
-          <div class="card kpi-card">
-            <div class="kpi-icon success">
-              <i data-lucide="trending-up"></i>
-            </div>
-            <div class="kpi-info">
-              <span class="kpi-label">Intereses Proyectados</span>
-              <span class="kpi-value" id="kpi-interests">$0.00</span>
-            </div>
-          </div>
-          <div class="card kpi-card">
-            <div class="kpi-icon warning">
-              <i data-lucide="piggy-bank"></i>
-            </div>
-            <div class="kpi-info">
-              <span class="kpi-label">Total Recaudado</span>
-              <span class="kpi-value" id="kpi-collected">$0.00</span>
-            </div>
-          </div>
-          <div class="card kpi-card">
-            <div class="kpi-icon danger">
-              <i data-lucide="hand-helping"></i>
-            </div>
-            <div class="kpi-info">
-              <span class="kpi-label">Saldo Pendiente</span>
-              <span class="kpi-value" id="kpi-balance">$0.00</span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Gráficos -->
-        <div class="dashboard-charts">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Historial de Recaudaciones</span>
-              <span class="card-subtitle">Capital vs. Intereses cobrados por mes</span>
-            </div>
-            <div class="chart-container">
-              <canvas id="collectionsChart"></canvas>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Estado de Préstamos</span>
-              <span class="card-subtitle">Distribución porcentual</span>
-            </div>
-            <div class="chart-container">
-              <canvas id="statusChart"></canvas>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Actividad Reciente -->
+        <!-- Cobranza / Morosidad -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Últimos Pagos Registrados</span>
-            <span class="card-subtitle">Actividad de cobranza reciente</span>
+            <span class="card-title">Cobranza y Morosidad</span>
+            <span class="card-subtitle">Segmentación de cartera vencida y resumen de cobro</span>
+          </div>
+          <div class="collections-summary" id="collections-summary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem;">
+            <div style="text-align: center;">
+              <div style="font-size: 1.4rem; font-weight: 700; color: var(--warning);" id="col-early-count">0</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">Mora Temprana (1-15 días)</div>
+            </div>
+            <div style="text-align: center;">
+              <div style="font-size: 1.4rem; font-weight: 700; color: var(--danger);" id="col-medium-count">0</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">Mora Media (16-30 días)</div>
+            </div>
+            <div style="text-align: center;">
+              <div style="font-size: 1.4rem; font-weight: 700; color: #7f1d1;" id="col-late-count">0</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">Mora Tardía (31+ días)</div>
+            </div>
           </div>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Fecha</th>
                   <th>Cliente</th>
-                  <th>Préstamo ID</th>
-                  <th>Cuota Nº</th>
-                  <th class="text-right">Monto</th>
+                  <th>Préstamo</th>
+                  <th class="text-right">Saldo Vencido</th>
+                  <th class="text-right">Interés Mora</th>
                   <th>Estado</th>
+                  <th class="text-right">Acción</th>
                 </tr>
               </thead>
-              <tbody id="dashboard-recent-payments">
-                <tr>
-                  <td colspan="6" style="text-align: center; color: var(--text-muted);">No hay transacciones registradas.</td>
-                </tr>
+              <tbody id="collections-table-body">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No hay cuentas en mora.</td></tr>
               </tbody>
             </table>
           </div>
@@ -468,6 +340,16 @@
               <div class="form-group">
                 <label for="default-interest-input">Tasa de Interés por Defecto (%)</label>
                 <input type="number" step="0.1" id="default-interest-input" placeholder="Ej. 10">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label for="moratorio-rate-input">Interés por Mora (% mensual)</label>
+                <input type="number" step="0.1" min="0" id="moratorio-rate-input" placeholder="Ej. 3">
+              </div>
+              <div class="form-group">
+                <label for="moratorio-grace-input">Días de Gracia antes de Mora</label>
+                <input type="number" step="1" min="0" id="moratorio-grace-input" placeholder="Ej. 3">
               </div>
             </div>
             <div id="financial-settings-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>

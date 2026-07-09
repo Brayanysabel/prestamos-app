@@ -2004,3 +2004,224 @@ function exportLoansCSV() {
   downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
 }
 
+// --- LOGICA DE KYC Y PAGOS DIGITALES AÑADIDA ---
+// Cambio de Metodo de Pago
+const payMethodSelect = document.getElementById('pay-method-select');
+const payCashFields = document.getElementById('pay-cash-fields');
+const payCardFields = document.getElementById('pay-card-fields');
+if (payMethodSelect) {
+  payMethodSelect.addEventListener('change', (e) => {
+    if(e.target.value === 'card') {
+      payCashFields.style.display = 'none';
+      payCardFields.style.display = 'block';
+    } else {
+      payCashFields.style.display = 'block';
+      payCardFields.style.display = 'none';
+    }
+  });
+}
+
+// Sobrescribir submit de pago para integrar tarjeta
+if (payCuotaForm) {
+  // Remover el listener anterior que interceptaba todo
+  const newPayForm = payCuotaForm.cloneNode(true);
+  payCuotaForm.parentNode.replaceChild(newPayForm, payCuotaForm);
+  
+  newPayForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const loanId = document.getElementById('pay-loan-id').value;
+    const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
+    const payAmount = parseFloat(document.getElementById('pay-amount-input').value) || parseFloat(document.getElementById('pay-suggested-amount').textContent.replace(/[^0-9.-]+/g,""));
+    const method = document.getElementById('pay-method-select').value;
+    const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
+    
+    const submitBtn = document.getElementById('pay-submit-btn');
+    if(submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Procesando...'; }
+    
+    try {
+      if (method === 'card') {
+        const cardNumber = document.getElementById('pay-card-number').value;
+        const cardExp = document.getElementById('pay-card-exp').value;
+        const cardCvv = document.getElementById('pay-card-cvv').value;
+        
+        if(!cardNumber || !cardExp || !cardCvv) throw new Error("Complete los datos de la tarjeta");
+        
+        // Llamada a pasarela de pagos simulada
+        await apiRequest('/payments/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            loanId, instalmentIdx: cuotaIndex, amount: payAmount,
+            cardData: { number: cardNumber, exp: cardExp, cvv: cardCvv }
+          })
+        });
+      } else {
+        const payDate = document.getElementById('pay-date-input').value;
+        await apiRequest('/payments', {
+          method: 'POST',
+          body: JSON.stringify({ loanId, instalmentIdx: cuotaIndex, amount: payAmount, date: payDate })
+        });
+      }
+      
+      alert("Pago registrado exitosamente.");
+      closeModal('modal-pay-cuota');
+      await loadData();
+      viewLoanDetail(loanId);
+    } catch (error) {
+      alert("Error al procesar pago: " + error.message);
+    } finally {
+      if(submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Registrar Pago'; }
+    }
+  });
+}
+
+// Biometria (Cámara)
+const kycVideo = document.getElementById('kyc-video');
+const kycCanvas = document.getElementById('kyc-canvas');
+const kycSnapshot = document.getElementById('kyc-snapshot');
+const kycCaptureBtn = document.getElementById('kyc-capture-btn');
+const kycRetakeBtn = document.getElementById('kyc-retake-btn');
+const kycSubmitBtn = document.getElementById('kyc-submit-btn');
+
+let currentKycBlob = null;
+let currentClientId = null; // Guardará el cliente actual
+
+// Interceptar vista detalle para setear currentClientId y ver el KYC
+const originalViewClientDetail = viewClientDetail;
+viewClientDetail = function(id) {
+  originalViewClientDetail(id);
+  currentClientId = id;
+  const client = state.clients.find(c => c.id === id);
+  if (client) {
+    const kycSpan = document.getElementById('client-detail-kyc');
+    if (client.kycStatus === 'verified') {
+      kycSpan.innerHTML = '<span class="badge badge-success"><i data-lucide="check-circle" style="width:12px; height:12px"></i> Verificado</span>';
+    } else {
+      kycSpan.innerHTML = '<span class="badge badge-warning">Pendiente</span>';
+    }
+  }
+};
+
+const originalRenderClientsTable = renderClientsTable;
+renderClientsTable = function() {
+  originalRenderClientsTable();
+  const rows = document.querySelectorAll('#clients-table-body tr');
+  const filtered = state.clients.filter(client => 
+    client.name.toLowerCase().includes(clientSearch.value.toLowerCase().trim()) || 
+    client.phone.includes(clientSearch.value.trim()) ||
+    client.email.toLowerCase().includes(clientSearch.value.toLowerCase().trim())
+  );
+  
+  rows.forEach((row, i) => {
+    if(filtered[i]) {
+      const kycStatus = filtered[i].kycStatus === 'verified' ? '<span class="badge badge-success">Verificado</span>' : '<span class="badge badge-warning">Pendiente</span>';
+      // Inyectar antes de "Préstamos Totales"
+      // La celda de estado KYC es la 4ta (índice 3) si contamos Nombre, Telefono, Correo, Estado KYC
+      const cell = document.createElement('td');
+      cell.innerHTML = kycStatus;
+      row.insertBefore(cell, row.children[3]);
+    }
+  });
+};
+
+if (document.getElementById('start-kyc-btn')) {
+  // Si hay varios, mejor delegar
+  document.body.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#start-kyc-btn');
+    if(btn) {
+      if(!currentClientId) return;
+      document.getElementById('kyc-client-id').value = currentClientId;
+      
+      kycSnapshot.style.display = 'none';
+      kycVideo.style.display = 'block';
+      kycRetakeBtn.style.display = 'none';
+      kycCaptureBtn.style.display = 'block';
+      kycSubmitBtn.disabled = true;
+      currentKycBlob = null;
+      document.getElementById('kyc-document-file').value = "";
+      
+      openModal('modal-kyc');
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        window.stream = stream;
+        kycVideo.srcObject = stream;
+      } catch(err) {
+        alert("Error accediendo a la cámara: " + err.message);
+      }
+    }
+  });
+}
+
+if (kycCaptureBtn) {
+  kycCaptureBtn.addEventListener('click', () => {
+    const context = kycCanvas.getContext('2d');
+    kycCanvas.width = kycVideo.videoWidth;
+    kycCanvas.height = kycVideo.videoHeight;
+    context.drawImage(kycVideo, 0, 0, kycCanvas.width, kycCanvas.height);
+    
+    kycCanvas.toBlob((blob) => {
+      currentKycBlob = blob;
+      kycSnapshot.src = URL.createObjectURL(blob);
+      kycSnapshot.style.display = 'block';
+      kycVideo.style.display = 'none';
+      
+      kycCaptureBtn.style.display = 'none';
+      kycRetakeBtn.style.display = 'block';
+      kycSubmitBtn.disabled = false;
+    }, 'image/jpeg');
+  });
+}
+
+if (kycRetakeBtn) {
+  kycRetakeBtn.addEventListener('click', () => {
+    kycSnapshot.style.display = 'none';
+    kycVideo.style.display = 'block';
+    kycCaptureBtn.style.display = 'block';
+    kycRetakeBtn.style.display = 'none';
+    kycSubmitBtn.disabled = true;
+    currentKycBlob = null;
+  });
+}
+
+if (kycSubmitBtn) {
+  kycSubmitBtn.addEventListener('click', async () => {
+    const clientId = document.getElementById('kyc-client-id').value;
+    const formData = new FormData();
+    if(currentKycBlob) formData.append('selfie', currentKycBlob, 'selfie.jpg');
+    
+    const docFile = document.getElementById('kyc-document-file').files[0];
+    if(docFile) formData.append('idDocument', docFile);
+    
+    kycSubmitBtn.disabled = true;
+    kycSubmitBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Subiendo...';
+    lucide.createIcons();
+    
+    try {
+      const token = getAuthToken();
+      const headers = token ? { 'X-Auth-Token': token } : {};
+      
+      const res = await fetch(`${API_URL}/clients/${clientId}/kyc`, {
+        method: 'POST',
+        headers: headers,
+        body: formData
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || "Error subiendo KYC");
+      
+      alert("Identidad verificada exitosamente.");
+      
+      if(window.stream) window.stream.getTracks().forEach(t=>t.stop());
+      closeModal('modal-kyc');
+      
+      await loadData();
+      viewClientDetail(clientId);
+    } catch(e) {
+      alert(e.message);
+    } finally {
+      kycSubmitBtn.disabled = false;
+      kycSubmitBtn.innerHTML = '<i data-lucide="shield-check"></i> Verificar Cliente';
+      lucide.createIcons();
+    }
+  });
+}

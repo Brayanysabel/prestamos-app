@@ -124,6 +124,9 @@ CREATE TABLE IF NOT EXISTS clients (
   phone TEXT,
   email TEXT,
   notes TEXT,
+  kycStatus TEXT DEFAULT 'pending',
+  idDocumentUrl TEXT,
+  selfieUrl TEXT,
   createdAt TEXT
 );
 
@@ -240,6 +243,11 @@ db.exec(initSql, async err => {
             // Añadir resetToken
             db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetToken TEXT", () => {});
             db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetTokenExpires TEXT", () => {});
+            
+            // Añadir columnas KYC
+            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS kycStatus TEXT DEFAULT 'pending'", () => {});
+            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS idDocumentUrl TEXT", () => {});
+            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS selfieUrl TEXT", () => {});
             
             // Añadir rateType a loans
             db.run("ALTER TABLE loans ADD COLUMN IF NOT EXISTS rateType TEXT DEFAULT 'annual'", () => {});
@@ -637,12 +645,24 @@ app.post('/api/clients', (req, res) => {
   const { name, phone, email, notes } = req.body;
   const id = generateId('cli');
   const createdAt = new Date().toISOString();
-  const stmt = db.prepare('INSERT INTO clients (id, companyId, name, phone, email, notes, createdAt) VALUES (?,?,?,?,?,?,?)');
-  stmt.run(id, req.user.companyId, name, phone, email, notes, createdAt, function (err) {
+  const stmt = db.prepare('INSERT INTO clients (id, companyId, name, phone, email, notes, createdAt, kycStatus) VALUES (?,?,?,?,?,?,?,?)');
+  stmt.run(id, req.user.companyId, name, phone, email, notes, createdAt, 'pending', function (err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ id, name, phone, email, notes, createdAt });
+    res.json({ id, name, phone, email, notes, createdAt, kycStatus: 'pending' });
   });
   stmt.finalize();
+});
+
+// Actualizar KYC de un cliente (Simulación)
+app.post('/api/clients/:id/kyc', (req, res) => {
+  const { idDocumentUrl, selfieUrl } = req.body;
+  const kycStatus = 'verified'; // Simulación de aprobación biométrica inmediata
+  db.run('UPDATE clients SET idDocumentUrl = ?, selfieUrl = ?, kycStatus = ? WHERE id = ? AND companyId = ?', 
+    [idDocumentUrl, selfieUrl, kycStatus, req.params.id, req.user.companyId], 
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Identidad verificada exitosamente (KYC Aprobado)', kycStatus });
+  });
 });
 
 // Borrar Cliente Seguro
@@ -798,11 +818,39 @@ app.post('/api/payments', (req, res) => {
         const remaining = row.remain || 0;
         const newStatus = remaining === 0 ? 'paid' : 'active';
         db.run('UPDATE loans SET remainingBalance = ?, status = ? WHERE id = ?', [remaining, newStatus, loanId]);
-        res.json({ paymentId });
+        res.json({ message: 'Pago registrado exitosamente' });
       });
     });
   });
-  stmt.finalize();
+});
+
+// Checkout Pasarela Digital Simulada
+app.post('/api/payments/checkout', (req, res) => {
+  const { loanId, instalmentIdx, amount, cardNumber, cvv } = req.body; 
+  if (!cardNumber || !cvv || cardNumber.length < 15) {
+    return res.status(400).json({ error: 'Tarjeta declinada o inválida' });
+  }
+
+  const paymentId = generateId('pay_card');
+  const companyId = req.user.companyId;
+  const date = new Date().toISOString().split('T')[0]; // Current local date simple
+
+  const stmt = db.prepare('INSERT INTO payments (id, companyId, loanId, instalmentIdx, amount, date) VALUES (?,?,?,?,?,?)');
+  stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    // Update instalment paid
+    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
+      if (err2) return res.status(500).json({ error: err2.message });
+      // Recalculate remaining
+      db.get('SELECT SUM(amount - paid) AS remain FROM instalments WHERE loanId = ?', [loanId], (err3, row) => {
+        if (err3) return res.status(500).json({ error: err3.message });
+        const remaining = row.remain || 0;
+        const newStatus = remaining === 0 ? 'paid' : 'active';
+        db.run('UPDATE loans SET remainingBalance = ?, status = ? WHERE id = ?', [remaining, newStatus, loanId]);
+        res.json({ message: 'Pago electrónico (Tarjeta) exitoso', paymentId });
+      });
+    });
+  });
 });
 // --- SaaS Super Admin Endpoints ---
 function requireSuperAdmin(req, res, next) {
