@@ -810,7 +810,7 @@ app.post('/api/payments', (req, res) => {
   stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
     if (err) return res.status(500).json({ error: err.message });
     // Update instalment paid and possibly status
-    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
+    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN (paid + ?) >= CAST(amount AS REAL) THEN \'paid\' ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
       if (err2) return res.status(500).json({ error: err2.message });
       // Recalculate remaining balance for loan
       db.get('SELECT SUM(amount - paid) AS remain FROM instalments WHERE loanId = ?', [loanId], (err3, row) => {
@@ -826,8 +826,10 @@ app.post('/api/payments', (req, res) => {
 
 // Checkout Pasarela Digital Simulada
 app.post('/api/payments/checkout', (req, res) => {
-  const { loanId, instalmentIdx, amount, cardNumber, cvv } = req.body; 
-  if (!cardNumber || !cvv || cardNumber.length < 15) {
+  const { loanId, instalmentIdx, amount, cardData } = req.body;
+  const cardNumber = (req.body.cardNumber) || (cardData && cardData.number) || '';
+  const cvv = (req.body.cvv) || (cardData && cardData.cvv) || '';
+  if (!cardNumber || !cvv || String(cardNumber).replace(/\s/g,'').length < 15) {
     return res.status(400).json({ error: 'Tarjeta declinada o inválida' });
   }
 
@@ -839,7 +841,7 @@ app.post('/api/payments/checkout', (req, res) => {
   stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
     if (err) return res.status(500).json({ error: err.message });
     // Update instalment paid
-    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
+    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN (paid + ?) >= CAST(amount AS REAL) THEN \'paid\' ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
       if (err2) return res.status(500).json({ error: err2.message });
       // Recalculate remaining
       db.get('SELECT SUM(amount - paid) AS remain FROM instalments WHERE loanId = ?', [loanId], (err3, row) => {
