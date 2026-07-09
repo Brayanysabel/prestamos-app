@@ -51,6 +51,120 @@
           <i data-lucide="log-in"></i> Iniciar Sesión
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- ================= MAIN APP ================= -->
+  <div id="main-app" class="app-layout d-none">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon" id="sidebar-brand-icon" style="display: flex; max-width: 40px;">
+          <i data-lucide="wallet-cards"></i>
+        </div>
+        <h1 class="brand-text" id="sidebar-brand-name">PrestamosApp</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-target="sec-dashboard">
+          <i data-lucide="layout-dashboard"></i> Tablero
+        </a>
+        <a href="#" class="nav-item" data-target="sec-calculator">
+          <i data-lucide="calculator"></i> Simulador
+        </a>
+        <a href="#" class="nav-item" data-target="sec-clients">
+          <i data-lucide="users"></i> Clientes
+        </a>
+        <a href="#" class="nav-item" data-target="sec-loans">
+          <i data-lucide="banknote"></i> Préstamos
+        </a>
+        <a href="#" class="nav-item" data-target="sec-settings">
+          <i data-lucide="settings"></i> Ajustes
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <button id="logout-btn" class="btn btn-secondary" style="width: 100%; border: none; background: transparent; color: var(--danger); justify-content: flex-start;">
+          <i data-lucide="log-out"></i> Cerrar Sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Content Area -->
+    <main class="main-content">
+      <header class="top-header">
+        <button id="mobile-menu-btn" class="mobile-menu-btn">
+          <i data-lucide="menu"></i>
+        </button>
+        <h2 id="current-section-title">Tablero Principal</h2>
+        <div class="user-profile">
+          <div class="avatar">
+            <i data-lucide="user"></i>
+          </div>
+          <span id="header-company-name">Administrador</span>
+        </div>
+      </header>
+
+      <!-- ================= PESTAÑA: DASHBOARD ================= -->
+      <section id="sec-dashboard" class="app-section active">
+        <!-- Tarjetas de Resumen -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background-color: var(--primary-light); color: var(--primary);">
+              <i data-lucide="users"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Clientes Totales</span>
+              <span class="stat-value" id="dash-total-clients">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background-color: var(--success-light); color: var(--success);">
+              <i data-lucide="check-circle-2"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Préstamos Activos</span>
+              <span class="stat-value" id="dash-active-loans">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background-color: #fef9c3; color: var(--warning);">
+              <i data-lucide="coins"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Capital Colocado</span>
+              <span class="stat-value mono" id="dash-total-capital">$0.00</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background-color: #fee2e2; color: var(--danger);">
+              <i data-lucide="trending-down"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">En Mora (Riesgo)</span>
+              <span class="stat-value mono" id="dash-total-overdue">$0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+          <!-- Gráfico -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Flujo de Caja (Últimos 6 meses)</span>
+            </div>
+            <div style="height: 300px; width: 100%;">
+              <canvas id="cashflowChart"></canvas>
+            </div>
+          </div>
+          <!-- Próximos Cobros -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Próximos Cobros (7 días)</span>
+            </div>
+            <div id="upcoming-payments-list" style="max-height: 300px; overflow-y: auto;">
+              <!-- Se llena con JS -->
+              <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-top: 2rem;">No hay cobros pendientes.</p>
+            </div>
           </div>
         </div>
 
@@ -70,7 +184,7 @@
               <div style="font-size: 0.8rem; color: var(--text-muted);">Mora Media (16-30 días)</div>
             </div>
             <div style="text-align: center;">
-              <div style="font-size: 1.4rem; font-weight: 700; color: #7f1d1;" id="col-late-count">0</div>
+              <div style="font-size: 1.4rem; font-weight: 700; color: #7f1d1d;" id="col-late-count">0</div>
               <div style="font-size: 0.8rem; color: var(--text-muted);">Mora Tardía (31+ días)</div>
             </div>
           </div>
@@ -214,6 +328,7 @@
                   <th>Nombre</th>
                   <th>Teléfono</th>
                   <th>Correo Electrónico</th>
+                  <th>Estado KYC</th>
                   <th>Préstamos Totales</th>
                   <th class="text-right">Monto Deuda Activa</th>
                   <th class="text-right">Acciones</th>
@@ -356,48 +471,6 @@
             <button type="submit" class="btn btn-primary">Guardar Ajustes Financieros</button>
           </form>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">Gestión de Usuarios (Empleados)</span>
-          </div>
-          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
-            Añade usuarios adicionales para que puedan acceder y gestionar los préstamos de esta misma empresa.
-          </p>
-          <form id="add-user-form">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div class="form-group">
-                <label for="new-user-username">Nombre de Usuario</label>
-                <input type="text" id="new-user-username" placeholder="Ej. juan.perez" required>
-              </div>
-              <div class="form-group">
-                <label for="new-user-password">Contraseña</label>
-                <input type="password" id="new-user-password" placeholder="••••••••" required>
-              </div>
-            </div>
-            <div id="add-user-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
-            <button type="submit" class="btn btn-primary" style="margin-bottom: 1.5rem;">
-              <i data-lucide="user-plus"></i> Añadir Usuario
-            </button>
-          </form>
-          
-          <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
-            <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text);">Usuarios Registrados</h3>
-            <div class="table-responsive">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Usuario</th>
-                    <th>ID Empresa</th>
-                  </tr>
-                </thead>
-                <tbody id="users-tbody">
-                  <!-- Usuarios cargados por JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
         <div class="card">
           <div class="card-header">
             <span class="card-title">Copias de Seguridad (Backup)</span>
@@ -569,6 +642,13 @@
             <span class="detail-label">Deuda Activa</span>
             <span class="detail-value mono" id="client-detail-debt">$0.00</span>
           </div>
+          <div class="detail-item">
+            <span class="detail-label">Estado KYC</span>
+            <span class="detail-value" id="client-detail-kyc"><span class="badge badge-warning">Pendiente</span></span>
+          </div>
+          <div class="detail-item">
+            <button type="button" class="btn btn-primary" id="start-kyc-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-top:0.25rem;"><i data-lucide="scan-face"></i> Validar Identidad</button>
+          </div>
         </div>
         
         <div class="mb-4">
@@ -716,13 +796,45 @@
           </div>
           
           <div class="form-group mb-4">
-            <label for="pay-amount-input">Monto a Cobrar ($)</label>
-            <input type="number" id="pay-amount-input" step="any" min="0.01" required>
+            <label>Método de Pago</label>
+            <select id="pay-method-select" class="mb-4">
+              <option value="cash">Efectivo / Transferencia Manual</option>
+              <option value="card">Tarjeta de Crédito (Pasarela Digital)</option>
+            </select>
           </div>
-          <div class="form-group mb-4">
-            <label for="pay-date-input">Fecha del Pago</label>
-            <input type="date" id="pay-date-input" required>
+
+          <div id="pay-cash-fields">
+            <div class="form-group mb-4">
+              <label for="pay-amount-input">Monto a Cobrar ($)</label>
+              <input type="number" id="pay-amount-input" step="any" min="0.01" required>
+            </div>
+            <div class="form-group mb-4">
+              <label for="pay-date-input">Fecha del Pago</label>
+              <input type="date" id="pay-date-input" required>
+            </div>
           </div>
+
+          <div id="pay-card-fields" style="display: none; background: #f8fafc; padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border); margin-bottom: 1rem;">
+            <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem;">
+              <strong>Checkout Seguro</strong>
+              <i data-lucide="credit-card" style="color:var(--primary);"></i>
+            </div>
+            <div class="form-group mb-2">
+              <label>Número de Tarjeta</label>
+              <input type="text" id="pay-card-number" placeholder="0000 0000 0000 0000" maxlength="19">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group">
+                <label>Vencimiento</label>
+                <input type="text" id="pay-card-exp" placeholder="MM/YY" maxlength="5">
+              </div>
+              <div class="form-group">
+                <label>CVV</label>
+                <input type="password" id="pay-card-cvv" placeholder="123" maxlength="4">
+              </div>
+            </div>
+          </div>
+          
           <div class="form-group" id="pay-email-group" style="display: none;">
             <label style="display:flex; align-items:center; gap:8px; font-weight: normal; cursor: pointer;">
               <input type="checkbox" id="pay-send-email-checkbox">
@@ -732,7 +844,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="closeModal('modal-pay-cuota')">Cancelar</button>
-          <button type="submit" class="btn btn-success">Registrar Pago</button>
+          <button type="submit" class="btn btn-success" id="pay-submit-btn">Registrar Pago</button>
         </div>
       </form>
     </div>
@@ -769,22 +881,60 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: KYC BIOMETRÍA ================= -->
+  <div id="modal-kyc" class="modal-overlay">
+    <div class="modal-container" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 class="card-title">Validación de Identidad (KYC)</h2>
+        <button class="close-btn" onclick="closeModal('modal-kyc'); if(window.stream) window.stream.getTracks().forEach(t=>t.stop());">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">
+          Para cumplir con las normativas, por favor capture una selfie del cliente. 
+        </p>
+        <div style="background: #000; border-radius: var(--radius-md); overflow: hidden; position: relative; width: 100%; aspect-ratio: 4/3; margin-bottom: 1rem;">
+          <video id="kyc-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+          <canvas id="kyc-canvas" style="display: none;"></canvas>
+          <img id="kyc-snapshot" style="display: none; width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0;" />
+        </div>
+        <div style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1.5rem;">
+          <button type="button" class="btn btn-secondary" id="kyc-capture-btn">
+            <i data-lucide="camera"></i> Tomar Foto
+          </button>
+          <button type="button" class="btn btn-secondary" id="kyc-retake-btn" style="display: none;">
+            <i data-lucide="refresh-cw"></i> Repetir
+          </button>
+        </div>
+        <div class="form-group" style="text-align: left;">
+          <label>Documento de Identidad (Opcional MVP)</label>
+          <input type="file" id="kyc-document-file" accept="image/*" class="mb-4">
+        </div>
+        <input type="hidden" id="kyc-client-id">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-kyc'); if(window.stream) window.stream.getTracks().forEach(t=>t.stop());">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="kyc-submit-btn" disabled>
+          <i data-lucide="shield-check"></i> Verificar Cliente
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- CONFIGURACIÓN PARA PLAY STORE / NUBE -->
   <script>
-    // Si subes esta app a la Play Store, debes poner aquí la URL de tu servidor en la nube.
-    // Ejemplo: window.PRESTAMOS_API_URL = 'https://mi-backend-prestamos.onrender.com/api';
-    // Si lo dejas en blanco, asumirá que está ejecutándose en modo local.
     window.PRESTAMOS_API_URL = '';
   </script>
   
-  <script src="app.js?v=7"></script>
+  <script src="app.js"></script>
 
   <!-- Registro del Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(registration => {
-          console.log('ServiceWorker registrado con éxito: ', registration.scope);
+          console.log('ServiceWorker registrado con éxito');
         }).catch(err => {
           console.log('Registro de ServiceWorker falló: ', err);
         });
