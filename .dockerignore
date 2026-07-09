@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+.kilo
+scratch
+data
+android
+ios
+*.apk
+*.ps1
+*.bat
+.DS_Store

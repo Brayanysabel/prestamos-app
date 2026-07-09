@@ -3,3 +3,16 @@ data/
 .env
 android/
 ios/
+.kilo/
+scratch/
+*.apk
+*.ps1
+*.bat
+app-debug.apk
+debug_test.html
+diag.html
+patch_*.js
+reset_db.js
+fix_signup.js
+server/Dockerfile.old
+server/Dockerfile.test

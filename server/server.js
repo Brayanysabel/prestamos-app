@@ -21,7 +21,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "https:", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
@@ -62,7 +62,7 @@ app.use(express.static(path.resolve(__dirname, './www'), {
 const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
 // Token auth middleware
-app.use('/api', (req, res, next) => {
+const authenticateToken = (req, res, next) => {
   const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health'];
   if (publicRoutes.includes(req.path) || req.method === 'OPTIONS') {
     return next();
@@ -80,7 +80,9 @@ app.use('/api', (req, res, next) => {
     req.user = decoded; // { username, companyId, plan } // ej. { username: 'admin' }
     next();
   });
-});
+};
+
+app.use('/api', authenticateToken);
 
 
 // Initialize DB
@@ -132,6 +134,7 @@ CREATE TABLE IF NOT EXISTS loans (
   clientName TEXT NOT NULL,
   amount REAL NOT NULL,
   rate REAL NOT NULL,
+  rateType TEXT NOT NULL DEFAULT 'annual',
   term INTEGER NOT NULL,
   frequency TEXT NOT NULL,
   type TEXT NOT NULL,
@@ -237,6 +240,9 @@ db.exec(initSql, async err => {
             // Añadir resetToken
             db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetToken TEXT", () => {});
             db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetTokenExpires TEXT", () => {});
+            
+            // Añadir rateType a loans
+            db.run("ALTER TABLE loans ADD COLUMN IF NOT EXISTS rateType TEXT DEFAULT 'annual'", () => {});
             
             // Añadir validUntil a companies
             db.run("ALTER TABLE companies ADD COLUMN IF NOT EXISTS validUntil TEXT", () => {
@@ -689,7 +695,7 @@ app.get('/api/loans', (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     const loans = rows.map(r => ({
       ...r,
-      instalments: JSON.parse(r.instalments_json)
+      instalments: (() => { try { return typeof r.instalments_json === 'string' ? JSON.parse(r.instalments_json) : (r.instalments_json || []); } catch (e) { return []; } })()
     }));
     res.json(loans);
   });
@@ -712,7 +718,7 @@ app.post('/api/loans', (req, res) => {
         return res.status(403).json({ error: 'Has alcanzado el límite de préstamos (' + maxLoans + ') de tu plan actual. Por favor, mejora tu plan.' });
       }
 
-      const stmt = db.prepare(`INSERT INTO loans (id, companyId, clientId, clientName, amount, rate, term, frequency, type, startDate, totalPayable, interestAmount, status, remainingBalance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      const stmt = db.prepare(`INSERT INTO loans (id, companyId, clientId, clientName, amount, rate, rateType, term, frequency, type, startDate, totalPayable, interestAmount, status, remainingBalance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       stmt.run(
         loan.id,
         companyId,
@@ -720,6 +726,7 @@ app.post('/api/loans', (req, res) => {
         loan.clientName,
         loan.amount,
         loan.rate,
+        loan.rateType || 'annual',
         loan.term,
         loan.frequency,
         loan.type,
@@ -750,201 +757,6 @@ app.delete('/api/loans/:id', (req, res) => {
   const password = req.body.password;
   const loanId = req.params.id;
 
-  if (!username) return res.status(401).json({ error: 'No autorizado' });
-  if (!password) return res.status(400).json({ error: 'Se requiere contraseña para borrar' });
-
-  db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(403).json({ error: 'Usuario no encontrado' });
-    
-    const isMatch = await bcrypt.compare(password, row.password);
-    if (!isMatch) {
-      return res.status(403).json({ error: 'Contraseña incorrecta' });
-    }
-
-    // Si la contraseña es correcta, borrar todo lo relacionado al préstamo
-    db.run("DELETE FROM payments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
-      db.run("DELETE FROM instalments WHERE loanId = ? AND companyId = ?", [loanId], (err) => {
-        db.run("DELETE FROM loans WHERE id = ? AND companyId = ?", [loanId], (err) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json({ message: 'Préstamo eliminado exitosamente' });
-        });
-      });
-    });
-  });
-});
-
-// Payments
-app.post('/api/payments', (req, res) => {
-  const { loanId, instalmentIdx, amount, date } = req.body; // date format YYYY-MM-DD
-  const paymentId = generateId('pay');
-  const companyId = req.user.companyId;
-  const stmt = db.prepare('INSERT INTO payments (id, companyId, loanId, instalmentIdx, amount, date) VALUES (?,?,?,?,?,?)');
-  stmt.run(paymentId, companyId, loanId, instalmentIdx, amount, date, function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    // Update instalment paid and possibly status
-    db.run('UPDATE instalments SET paid = paid + ?, status = CASE WHEN paid + ? >= amount THEN "paid" ELSE status END WHERE loanId = ? AND idx = ?', [amount, amount, loanId, instalmentIdx], function (err2) {
-      if (err2) return res.status(500).json({ error: err2.message });
-      // Recalculate remaining balance for loan
-      db.get('SELECT SUM(amount - paid) AS remain FROM instalments WHERE loanId = ?', [loanId], (err3, row) => {
-        if (err3) return res.status(500).json({ error: err3.message });
-        const remaining = row.remain || 0;
-        const newStatus = remaining === 0 ? 'paid' : 'active';
-        db.run('UPDATE loans SET remainingBalance = ?, status = ? WHERE id = ?', [remaining, newStatus, loanId]);
-        res.json({ paymentId });
-      });
-    });
-  });
-  stmt.finalize();
-});
-// --- SaaS Super Admin Endpoints ---
-function requireSuperAdmin(req, res, next) {
-  if (!req.user || req.user.username !== 'admin' || req.user.companyId !== 'comp_default') {
-    return res.status(403).json({ error: 'Acceso denegado. Solo Super Admin.' });
-  }
-  next();
-}
-
-app.get('/api/saas/companies', requireSuperAdmin, (req, res) => {
-  db.all(`
-    SELECT c.*, 
-      (SELECT COUNT(*) FROM users WHERE companyId = c.id) as userCount,
-      (SELECT COUNT(*) FROM clients WHERE companyId = c.id) as clientCount,
-      (SELECT COUNT(*) FROM loans WHERE companyId = c.id) as loanCount
-    FROM companies c
-    ORDER BY c.createdAt DESC
-  `, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-app.post('/api/saas/payments', requireSuperAdmin, (req, res) => {
-  const { targetCompanyId, amount, months, notes } = req.body;
-  if (!targetCompanyId || !amount || !months) return res.status(400).json({ error: 'Faltan datos requeridos' });
-
-  const paymentId = generateId('spay');
-  const date = new Date().toISOString();
-
-  // 1. Insert payment record
-  const stmt = db.prepare('INSERT INTO saas_payments (id, companyId, amount, months, date, notes) VALUES (?,?,?,?,?,?)');
-  stmt.run(paymentId, targetCompanyId, amount, months, date, notes, function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-
-    // 2. Extend validUntil and activate if suspended
-    db.get('SELECT validUntil FROM companies WHERE id = ?', [targetCompanyId], (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
-      
-      let currentValidUntil = new Date();
-      if (row && row.validUntil && new Date(row.validUntil) > currentValidUntil) {
-        currentValidUntil = new Date(row.validUntil);
-      }
-      
-      // Add 'months' months
-      currentValidUntil.setMonth(currentValidUntil.getMonth() + parseInt(months, 10));
-      const newValidUntil = currentValidUntil.toISOString().split('T')[0];
-
-      db.run('UPDATE companies SET validUntil = ?, status = "active" WHERE id = ?', [newValidUntil, targetCompanyId], (err2) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        res.json({ message: 'Pago registrado exitosamente', newValidUntil });
-      });
-    });
-  });
-  stmt.finalize();
-});
-
-app.put('/api/saas/companies/:id/status', requireSuperAdmin, (req, res) => {
-  const targetCompanyId = req.params.id;
-  const { status } = req.body; // 'active' or 'suspended'
-  
-  if (status !== 'active' && status !== 'suspended') {
-    return res.status(400).json({ error: 'Estado inválido' });
-  }
-
-  db.run('UPDATE companies SET status = ? WHERE id = ?', [status, targetCompanyId], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Estado actualizado correctamente' });
-  });
-});
-
-app.put('/api/saas/companies/:id/plan', requireSuperAdmin, (req, res) => {
-  const targetCompanyId = req.params.id;
-  const { plan } = req.body;
-  if (!plan) return res.status(400).json({ error: 'Falta el plan' });
-
-  // Update company plan
-  db.run('UPDATE companies SET plan = ? WHERE id = ?', [plan, targetCompanyId], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Plan actualizado correctamente' });
-  });
-});
-
-app.delete('/api/saas/companies/:id', requireSuperAdmin, (req, res) => {
-  const targetCompanyId = req.params.id;
-  if (targetCompanyId === 'comp_default') {
-    return res.status(400).json({ error: 'No se puede eliminar la empresa principal' });
-  }
-
-  // Delete everything related to this company
-  db.serialize(() => {
-    db.run('BEGIN TRANSACTION');
-    db.run('DELETE FROM settings WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM payments WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM instalments WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM loans WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM clients WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM users WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM saas_payments WHERE companyId = ?', [targetCompanyId]);
-    db.run('DELETE FROM companies WHERE id = ?', [targetCompanyId], function(err) {
-      if (err) {
-        db.run('ROLLBACK');
-        return res.status(500).json({ error: err.message });
-      }
-      db.run('COMMIT');
-      res.json({ message: 'Empresa eliminada por completo' });
-    });
-  });
-});
-
-// SaaS Plans CRUD
-app.get('/api/saas/plans', requireSuperAdmin, (req, res) => {
-  db.all('SELECT * FROM saas_plans ORDER BY price ASC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
-app.post('/api/saas/plans', requireSuperAdmin, (req, res) => {
-  const { id, name, price, max_users, max_loans } = req.body;
-  db.run('INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)', 
-    [id, name, price, max_users, max_loans], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Plan creado', id });
-  });
-});
-
-app.put('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
-  const { name, price, max_users, max_loans } = req.body;
-  db.run('UPDATE saas_plans SET name = ?, price = ?, max_users = ?, max_loans = ? WHERE id = ?', 
-    [name, price, max_users, max_loans, req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Plan actualizado' });
-  });
-});
-
-app.delete('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
-  db.run('DELETE FROM saas_plans WHERE id = ?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Plan eliminado' });
-  });
-});
-
-// Descargar Base de Datos (solo disponible en entorno de desarrollo)
-app.get('/api/backup/download', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(404).json({ error: 'No disponible en producción' });
-  }
-  const username = req.user?.username;
   if (!username) return res.status(401).json({ error: 'No autorizado' });
   if (!password) return res.status(400).json({ error: 'Se requiere contraseña para borrar' });
 

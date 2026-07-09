@@ -58,8 +58,7 @@ async function loadData() {
       apiRequest('/loans')
     ]);
     state.clients = clients || [];
-    state.loans = loans || [];
-    // Ensure nested fields
+    state.loans = (loans || []).map(normalizeLoan);
     state.loans.forEach(l => {
       if (!l.instalments) l.instalments = [];
       l.instalments.forEach(i => {
@@ -151,9 +150,9 @@ function seedMockData() {
   ];
 
   // Préstamos Semilla
-  // 1. Préstamo de Juan Pérez: Pagado. Monto: $1000, 10% interes, 3 cuotas mensuales, Francés. Creado hace 90 días.
+  // 1. Préstamo de Juan Pérez: Pagado. Monto: $1000, 10% interes anual, 3 cuotas mensuales, Francés. Creado hace 90 días.
   const loan1Date = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const loan1 = generateLoanObject("cli_1", "Juan Carlos Pérez", 1000, 12, 3, "monthly", "french", loan1Date);
+  const loan1 = generateLoanObject("cli_1", "Juan Carlos Pérez", 1000, 12, 'annual', 3, "monthly", "french", loan1Date);
   // Marcar todas las cuotas como pagadas
   loan1.instalments.forEach((inst, index) => {
     inst.status = 'paid';
@@ -168,9 +167,9 @@ function seedMockData() {
   loan1.remainingBalance = 0;
   loan1.status = 'paid';
 
-  // 2. Préstamo de María Gómez: Activo con abonos. Monto: $2000, 15% interés, 6 cuotas quincenales, Francés. Creado hace 45 días.
+  // 2. Préstamo de María Gómez: Activo con abonos. Monto: $2000, 15% interés anual, 6 cuotas quincenales, Francés. Creado hace 45 días.
   const loan2Date = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
-  const loan2 = generateLoanObject("cli_2", "María Altagracia Gómez", 2000, 15, 6, "biweekly", "french", loan2Date);
+  const loan2 = generateLoanObject("cli_2", "María Altagracia Gómez", 2000, 15, 'annual', 6, "biweekly", "french", loan2Date);
   // Pagar las primeras 3 cuotas
   let totalPaidL2 = 0;
   for (let i = 0; i < 3; i++) {
@@ -187,10 +186,10 @@ function seedMockData() {
   loan2.remainingBalance = parseFloat((loan2.totalPayable - totalPaidL2).toFixed(2));
   loan2.status = 'active';
 
-  // 3. Préstamo de Pedro Sánchez: Vencido (Atrasado). Monto: $1500, 18% interés, 4 cuotas semanales, Francés. Creado hace 25 días.
+  // 3. Préstamo de Pedro Sánchez: Vencido (Atrasado). Monto: $1500, 18% interés anual, 4 cuotas semanales, Francés. Creado hace 25 días.
   // Como es semanal, ya pasaron las 4 semanas. Supongamos que solo pagó la cuota 1 y 2. La 3 y 4 están vencidas.
   const loan3Date = new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000);
-  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio Sánchez", 1500, 18, 4, "weekly", "french", loan3Date);
+  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio Sánchez", 1500, 18, 'annual', 4, "weekly", "french", loan3Date);
   
   // Pagar cuota 1 y 2
   let totalPaidL3 = 0;
@@ -224,9 +223,17 @@ function seedMockData() {
 // --- 3. MOTOR MATEMÁTICO DE PRÉSTAMOS ---
 
 // Función para calcular amortización
-function calculateAmortization(amount, annualRate, term, frequency, type, startDate) {
+function calculateAmortization(amount, rate, rateType, term, frequency, type, startDate) {
   const freqData = FREQUENCIES[frequency];
   const periodsPerYear = freqData.periodsPerYear;
+  
+  // Convertir tasa a anual según el tipo
+  let annualRate = rate;
+  if (rateType === 'monthly') {
+    annualRate = rate * 12;
+  } else if (rateType === 'daily') {
+    annualRate = rate * 365;
+  }
   
   // Tasa de interés por período
   const ratePerPeriod = (annualRate / 100) / periodsPerYear;
@@ -347,7 +354,8 @@ function calculateAmortization(amount, annualRate, term, frequency, type, startD
   
   return {
     amount: parseFloat(amount),
-    rate: parseFloat(annualRate),
+    rate: parseFloat(rate),
+    rateType: rateType,
     term: parseInt(term),
     frequency: frequency,
     type: type,
@@ -361,15 +369,32 @@ function calculateAmortization(amount, annualRate, term, frequency, type, startD
 }
 
 // Genera un objeto completo de préstamo asignando ID y Cliente
-function generateLoanObject(clientId, clientName, amount, annualRate, term, frequency, type, startDate) {
-  const loanDetails = calculateAmortization(amount, annualRate, term, frequency, type, startDate);
+function generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate) {
+  const loanDetails = calculateAmortization(amount, rate, rateType, term, frequency, type, startDate);
   const loanId = "loan_" + Math.random().toString(36).substring(2, 9);
   
   return {
     id: loanId,
     clientId: clientId,
     clientName: clientName,
+    rateType: rateType,
     ...loanDetails
+  };
+}
+
+function normalizeLoan(loan) {
+  if (!loan) return loan;
+  return {
+    ...loan,
+    rateType: loan.rateType || loan.ratetype || 'annual'
+  };
+}
+
+function normalizeLoan(loan) {
+  if (!loan) return loan;
+  return {
+    ...loan,
+    rateType: loan.rateType || loan.ratetype || 'annual'
   };
 }
 
@@ -755,6 +780,7 @@ calculatorForm.addEventListener('submit', (e) => {
   const clientId = document.getElementById('calc-client').value;
   const amount = parseFloat(document.getElementById('calc-amount').value);
   const rate = parseFloat(document.getElementById('calc-rate').value);
+  const rateType = document.getElementById('calc-rate-type').value;
   const term = parseInt(document.getElementById('calc-term').value);
   const frequency = document.getElementById('calc-frequency').value;
   const type = document.getElementById('calc-type').value;
@@ -767,7 +793,7 @@ calculatorForm.addEventListener('submit', (e) => {
   }
 
   // Generar objeto préstamo temporal
-  calculatedLoanTemp = generateLoanObject(clientId, clientName, amount, rate, term, frequency, type, startDate);
+  calculatedLoanTemp = generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate);
 
   // Renderizar la tabla de amortización calculada
   renderAmortizationTable(calculatedLoanTemp.instalments);
@@ -775,7 +801,8 @@ calculatorForm.addEventListener('submit', (e) => {
   // Resumen
   const freqName = FREQUENCIES[frequency].name;
   const typeName = type === 'french' ? 'Francés (Cuota Fija)' : 'Simple (Cuota Lineal)';
-  calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% anual</strong>.`;
+  const rateLabel = rateType === 'annual' ? 'anual' : rateType === 'monthly' ? 'mensual' : 'diario';
+  calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% ${rateLabel}</strong>.`;
   calcTotalPayableBadge.textContent = `Total a Pagar: ${formatCurrency(calculatedLoanTemp.totalPayable)}`;
 
   calcResultCard.classList.remove('d-none');
@@ -1795,8 +1822,8 @@ document.getElementById('export-clients-btn')?.addEventListener('click', () => {
 
 document.getElementById('export-loans-btn')?.addEventListener('click', () => {
   if (state.loans.length === 0) return alert('No hay préstamos para exportar');
-  const headers = "ID,Cliente,Monto,Tasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
-  const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.annualRate}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
+  const headers = "ID,Cliente,Monto,Tasa,TipoTasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
+  const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.rate}","${l.rateType || 'annual'}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'prestamos.csv');
 });
 

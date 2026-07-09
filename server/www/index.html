@@ -242,8 +242,15 @@
                 <input type="number" id="calc-amount" placeholder="Ej. 1000" min="10" step="any" required>
               </div>
               <div class="form-group">
-                <label for="calc-rate">Tasa de Interés (% Anual)</label>
-                <input type="number" id="calc-rate" placeholder="Ej. 12" min="0" max="100" step="any" required>
+                <label for="calc-rate">Tasa de Interés</label>
+                <div style="display: flex; gap: 0.5rem;">
+                  <input type="number" id="calc-rate" placeholder="Ej. 12" min="0" max="100" step="any" required style="flex: 2;">
+                  <select id="calc-rate-type" required style="flex: 1;">
+                    <option value="annual" selected>% Anual</option>
+                    <option value="monthly">% Mensual</option>
+                    <option value="daily">% Diario</option>
+                  </select>
+                </div>
               </div>
               <div class="form-group">
                 <label for="calc-term">Plazo (Número de Cuotas)</label>
@@ -888,7 +895,7 @@
     window.PRESTAMOS_API_URL = '';
   </script>
   
-  <script src="app.js"></script>
+  <script src="app.js?v=7"></script>
 
   <!-- Registro del Service Worker -->
   <script>
