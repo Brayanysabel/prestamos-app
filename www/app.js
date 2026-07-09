@@ -67,7 +67,7 @@ async function loadData() {
     });
     
     document.getElementById('login-screen').classList.remove('active');
-    document.getElementById('app-wrapper').classList.remove('d-none');
+    document.getElementById('main-app').classList.remove('d-none');
     refreshAll();
   } catch (e) {
     console.error('Error cargando datos', e);
@@ -76,7 +76,7 @@ async function loadData() {
 
 function showLogin() {
   document.getElementById('login-screen').classList.add('active');
-  document.getElementById('app-wrapper').classList.add('d-none');
+  document.getElementById('main-app').classList.add('d-none');
 }
 
 // Lógica del formulario de login
@@ -401,7 +401,7 @@ function normalizeLoan(loan) {
 // --- 4. CONTROLADORES Y RUTEADOR ---
 
 // Navegar entre secciones (SPA)
-const navLinks = document.querySelectorAll('.nav-link');
+const navLinks = document.querySelectorAll('.nav-item');
 const sections = document.querySelectorAll('.app-section');
 const sectionTitle = document.getElementById('section-title');
 const sectionSubtitle = document.getElementById('section-subtitle');
@@ -458,10 +458,10 @@ navLinks.forEach(link => {
 });
 
 // Registrar eventos de botones rápidos
-document.getElementById('quick-loan-btn').addEventListener('click', () => {
+const qlb=document.getElementById('quick-loan-btn'); if(qlb) qlb.addEventListener('click', () => {
   switchSection('calculator');
 });
-document.getElementById('new-loan-shortcut-btn').addEventListener('click', () => {
+const nlsb=document.getElementById('new-loan-shortcut-btn'); if(nlsb) nlsb.addEventListener('click', () => {
   switchSection('calculator');
 });
 
@@ -1351,7 +1351,7 @@ function applyTheme(theme) {
   lucide.createIcons();
 
   // Re-dibujar gráficos si están activos para adaptar colores de fuente
-  const activeLink = document.querySelector('.nav-link.active');
+  const activeLink = document.querySelector('.nav-item.active');
   if (activeLink && activeLink.getAttribute('data-target') === 'dashboard') {
     renderDashboard();
   }
