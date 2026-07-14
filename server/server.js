@@ -375,7 +375,7 @@ app.post('/api/login', (req, res) => {
     }
     
     // Check if company is active
-    const isSuperAdmin = row.username === 'admin' && row.companyId === 'comp_default';
+    const isSuperAdmin = row.companyId === 'comp_default';
     if (!isSuperAdmin) {
       if (row.status === 'suspended') {
         return res.status(403).json({ error: 'La cuenta de su empresa se encuentra suspendida.' });
@@ -860,7 +860,7 @@ app.post('/api/payments/checkout', (req, res) => {
 });
 // --- SaaS Super Admin Endpoints ---
 function requireSuperAdmin(req, res, next) {
-  if (!req.user || req.user.username !== 'admin' || req.user.companyId !== 'comp_default') {
+  if (!req.user || req.user.companyId !== 'comp_default') {
     return res.status(403).json({ error: 'Acceso denegado. Solo Super Admin.' });
   }
   next();
