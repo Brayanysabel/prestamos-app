@@ -1,4 +1,4 @@
-const CACHE_NAME = 'prestamos-app-v6';
+const CACHE_NAME = 'prestamos-app-v8';
 const ASSETS = [
   '/',
   '/index.html',
