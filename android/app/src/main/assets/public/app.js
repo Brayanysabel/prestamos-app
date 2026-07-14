@@ -1540,10 +1540,25 @@ if (kycSubmitBtn) {
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
     
-    // Simular el guardado de KYC
-    client.kycStatus = 'verified';
-    client.kycPhoto = kycSnapshot.src;
-    saveState();
+    // Guardar KYC en el backend
+    try {
+      const res = await fetch(`${API_URL}/clients/${clientId}/kyc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': localStorage.getItem('prestamos_auth_token')
+        },
+        body: JSON.stringify({ selfieUrl: kycSnapshot.src, idDocumentUrl: '' })
+      });
+      if (!res.ok) throw new Error('Error al validar la identidad en el servidor.');
+      
+      client.kycStatus = 'verified';
+      client.kycPhoto = kycSnapshot.src;
+    } catch (e) {
+      console.error(e);
+      alert(e.message);
+      return;
+    }
     
     stopCamera();
     closeModal('modal-kyc');
