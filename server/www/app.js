@@ -2390,6 +2390,10 @@ async function renderSuperAdminSection() {
         <td>$${plan.price}</td>
         <td>${plan.max_loans}</td>
         <td>${plan.max_users}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary" onclick='openPlanModal(${JSON.stringify(plan)})'><i data-lucide="edit"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deletePlan('${plan.id}')"><i data-lucide="trash-2"></i></button>
+        </td>
       `;
       ptbody.appendChild(tr);
     });
@@ -2427,4 +2431,73 @@ window.toggleCompanyStatus = async function(companyId, currentStatus) {
   }
 };
 }
+
+// Modal Planes SaaS
+window.openPlanModal = function(plan = null) {
+  const modal = document.getElementById('plan-modal');
+  const title = document.getElementById('plan-modal-title');
+  const form = document.getElementById('plan-form');
+  const idInput = document.getElementById('plan-id-input');
+  
+  form.reset();
+  
+  if (plan) {
+    title.textContent = 'Editar Plan SaaS';
+    document.getElementById('plan-id').value = plan.id;
+    idInput.value = plan.id;
+    idInput.disabled = true;
+    document.getElementById('plan-name').value = plan.name;
+    document.getElementById('plan-price').value = plan.price;
+    document.getElementById('plan-max-loans').value = plan.max_loans;
+    document.getElementById('plan-max-users').value = plan.max_users;
+  } else {
+    title.textContent = 'Crear Plan SaaS';
+    document.getElementById('plan-id').value = '';
+    idInput.disabled = false;
+  }
+  
+  modal.style.display = 'flex';
+};
+
+window.closePlanModal = function() {
+  document.getElementById('plan-modal').style.display = 'none';
+};
+
+document.getElementById('plan-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const originalId = document.getElementById('plan-id').value;
+  const id = document.getElementById('plan-id-input').value;
+  const name = document.getElementById('plan-name').value;
+  const price = document.getElementById('plan-price').value;
+  const max_loans = document.getElementById('plan-max-loans').value;
+  const max_users = document.getElementById('plan-max-users').value;
+  
+  try {
+    if (originalId) {
+      await apiRequest(`/saas/plans/${originalId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, price, max_loans, max_users })
+      });
+    } else {
+      await apiRequest('/saas/plans', {
+        method: 'POST',
+        body: JSON.stringify({ id, name, price, max_loans, max_users })
+      });
+    }
+    closePlanModal();
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error guardando el plan: ' + err.message);
+  }
+});
+
+window.deletePlan = async function(planId) {
+  if (!confirm('¿Seguro que desea eliminar este plan? Los inquilinos con este plan podrían fallar si no se reasignan.')) return;
+  try {
+    await apiRequest(`/saas/plans/${planId}`, { method: 'DELETE' });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error eliminando plan: ' + err.message);
+  }
+};
 
