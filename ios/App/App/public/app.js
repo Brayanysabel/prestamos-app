@@ -17,6 +17,7 @@ const FREQUENCIES = {
 
 // Variable para almacenar el préstamo calculado temporalmente antes de otorgarlo
 let calculatedLoanTemp = null;
+let currentClientId = null; // ID del cliente actualmente visualizado en el modal
 
 // Instancias de Chart.js globales para poder destruirlas y recrearlas
 let collectionsChartInstance = null;
@@ -1040,6 +1041,8 @@ function editClient(id) {
 function viewClientDetail(id) {
   const client = state.clients.find(c => c.id === id);
   if (!client) return;
+  
+  currentClientId = id;
   
   document.getElementById('client-detail-name').textContent = client.name;
   document.getElementById('client-detail-phone').innerHTML = `<a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;"><i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}</a>`;
