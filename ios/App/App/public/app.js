@@ -24,7 +24,20 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-const API_URL = window.PRESTAMOS_API_URL || '/api';
+const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
+
+// --- LIMPIEZA FORZADA DE CACHÉ (SOLO UNA VEZ POR VERSIÓN) ---
+if (!localStorage.getItem('prestamos_cache_cleared_v6')) {
+  if ('caches' in window) {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+    });
+  }
+  // Eliminar configuraciones antiguas que puedan causar problemas
+  localStorage.removeItem('prestamos_theme');
+  localStorage.setItem('prestamos_cache_cleared_v6', 'true');
+  console.log("Caché y ajustes antiguos limpiados exitosamente.");
+}
 
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
@@ -67,8 +80,13 @@ async function loadData() {
       });
     });
     
-    document.getElementById('login-screen').classList.remove('active');
-    document.getElementById('app-wrapper').classList.remove('d-none');
+    const loginScreen = document.getElementById('login-screen');
+    if (loginScreen) loginScreen.classList.remove('active');
+    
+    let appWrapper = document.getElementById('app-wrapper');
+    if (!appWrapper) appWrapper = document.getElementById('main-app');
+    if (appWrapper) appWrapper.classList.remove('d-none');
+    
     refreshAll();
   } catch (e) {
     console.error('Error cargando datos', e);
@@ -76,34 +94,41 @@ async function loadData() {
 }
 
 function showLogin() {
-  document.getElementById('login-screen').classList.add('active');
-  document.getElementById('app-wrapper').classList.add('d-none');
+  const loginScreen = document.getElementById('login-screen');
+  if (loginScreen) loginScreen.classList.add('active');
+  
+  let appWrapper = document.getElementById('app-wrapper');
+  if (!appWrapper) appWrapper = document.getElementById('main-app');
+  if (appWrapper) appWrapper.classList.add('d-none');
 }
 
 // Lógica del formulario de login
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const user = document.getElementById('login-username').value;
-  const pass = document.getElementById('login-password').value;
-  const errorEl = document.getElementById('login-error');
-  
-  try {
-    const res = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user, password: pass })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error de autenticación');
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const user = document.getElementById('login-username').value;
+    const pass = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error');
     
-    localStorage.setItem('prestamos_auth_token', data.token);
-    errorEl.classList.add('d-none');
-    loadData();
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  }
-});
+    try {
+      const res = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error de autenticación');
+      
+      localStorage.setItem('prestamos_auth_token', data.token);
+      errorEl.classList.add('d-none');
+      loadData();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('d-none');
+    }
+  });
+}
 
 // Guardar preferencias locales (ej. tema)
 function savePreferences() {
@@ -412,6 +437,10 @@ function switchSection(targetSectionId) {
     sectionSubtitle.textContent = meta.subtitle;
   }
   
+  if (targetSectionId === 'settings') {
+    loadUsers();
+  }
+  
   // Actualizar datos de la sección específica
   if (targetSectionId === 'dashboard') {
     renderDashboard();
@@ -432,13 +461,19 @@ navLinks.forEach(link => {
   });
 });
 
-// Registrar eventos de botones rápidos
-document.getElementById('quick-loan-btn').addEventListener('click', () => {
-  switchSection('calculator');
-});
-document.getElementById('new-loan-shortcut-btn').addEventListener('click', () => {
-  switchSection('calculator');
-});
+// Registrar eventos de botones rápidos (con verificación de existencia)
+  const quickLoanBtn = document.getElementById('quick-loan-btn');
+  if (quickLoanBtn) {
+    quickLoanBtn.addEventListener('click', () => {
+      switchSection('calculator');
+    });
+  }
+  const newLoanShortcutBtn = document.getElementById('new-loan-shortcut-btn');
+  if (newLoanShortcutBtn) {
+    newLoanShortcutBtn.addEventListener('click', () => {
+      switchSection('calculator');
+    });
+  }
 
 // --- 5. LÓGICA DE NEGOCIO EN EL FRONTEND ---
 
@@ -958,7 +993,11 @@ function renderClientsTable() {
           ${activeLoans} activos, ${historicalLoans} finalizados
         </span>
       </td>
-      <td>${client.phone}</td>
+      <td>
+        <a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;">
+          <i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}
+        </a>
+      </td>
       <td>${client.email}</td>
       <td style="font-family: var(--font-mono); text-align: center;">${count}</td>
       <td class="number-cell text-right" style="font-weight: 600; color: ${debt > 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(debt)}</td>
@@ -1003,13 +1042,27 @@ function viewClientDetail(id) {
   if (!client) return;
   
   document.getElementById('client-detail-name').textContent = client.name;
-  document.getElementById('client-detail-phone').textContent = client.phone;
+  document.getElementById('client-detail-phone').innerHTML = `<a href="https://wa.me/${client.phone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(client.name.split(' ')[0])}" target="_blank" style="color: #25D366; text-decoration: none; font-weight: 500;"><i data-lucide="message-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> ${client.phone}</a>`;
   document.getElementById('client-detail-email').textContent = client.email;
   
   const debt = getClientActiveDebt(id);
   document.getElementById('client-detail-debt').textContent = formatCurrency(debt);
   document.getElementById('client-detail-debt').style.color = debt > 0 ? 'var(--danger)' : 'var(--success)';
   document.getElementById('client-detail-notes').textContent = client.notes || 'Ninguna nota cargada.';
+  
+  const kycBadge = document.getElementById('client-detail-kyc');
+  if (kycBadge) {
+    if (client.kycStatus === 'verified') {
+      kycBadge.innerHTML = '<span class="badge badge-success"><i data-lucide="check-circle" style="width:12px;height:12px;vertical-align:middle;"></i> Verificado</span>';
+    } else {
+      kycBadge.innerHTML = '<span class="badge badge-warning">Pendiente</span>';
+    }
+  }
+  
+  const startKycBtn = document.getElementById('start-kyc-btn');
+  if (startKycBtn) {
+    startKycBtn.onclick = () => openKycModal(client.id);
+  }
   
   // Renderizar historial de préstamos del cliente
   const clientLoans = state.loans.filter(l => l.clientId === id);
@@ -1163,9 +1216,17 @@ function viewLoanDetail(loanId) {
         <i data-lucide="hand-coins" style="width: 12px; height: 12px;"></i> Cobrar
       </button>`;
     } else {
-      actionBtn = `<button class="btn btn-secondary btn-sm" disabled>
-        <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
-      </button>`;
+      actionBtn = `<div style="display:flex;gap:4px;justify-content:flex-end;">
+        <button class="btn btn-secondary btn-sm" disabled>
+          <i data-lucide="check" style="width: 12px; height: 12px;"></i> Pagado
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="printReceipt('${loan.id}', ${inst.index})" title="Imprimir Recibo">
+          <i data-lucide="printer" style="width: 12px; height: 12px;"></i>
+        </button>
+        <button class="btn btn-success btn-sm" onclick="sendWhatsAppReceipt('${loan.id}', ${inst.index})" title="Enviar por WhatsApp" style="background-color: #25D366; border-color: #25D366;">
+          <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+        </button>
+      </div>`;
     }
 
     const tr = document.createElement('tr');
@@ -1212,6 +1273,17 @@ function openPayCuotaModal(loanId, cuotaIndex) {
   document.getElementById('pay-amount-input').max = remainingInCuota; // Opcional, pero se permiten abonos directos
   document.getElementById('pay-date-input').value = new Date().toISOString().split('T')[0];
   
+  const client = state.clients.find(c => c.id === loan.clientId);
+  const emailGroup = document.getElementById('pay-email-group');
+  const emailCheckbox = document.getElementById('pay-send-email-checkbox');
+  if (client && client.email) {
+    emailGroup.style.display = 'block';
+    emailCheckbox.checked = true;
+  } else {
+    emailGroup.style.display = 'none';
+    emailCheckbox.checked = false;
+  }
+  
   // Cerrar el modal detalle del préstamo momentáneamente para evitar apilamiento visual confuso, o dejar que se apile.
   // Es mejor cerrar el detalle y que al guardar el pago volvamos a abrirlo.
   closeModal('modal-loan-detail');
@@ -1223,19 +1295,62 @@ payCuotaForm.addEventListener('submit', async (e) => {
   
   const loanId = document.getElementById('pay-loan-id').value;
   const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
+  
+  const method = document.getElementById('pay-method-select') ? document.getElementById('pay-method-select').value : 'cash';
   const payAmount = parseFloat(document.getElementById('pay-amount-input').value);
   const payDate = document.getElementById('pay-date-input').value;
+  const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
   
+  let paymentData = {
+    loanId,
+    instalmentIdx: cuotaIndex,
+    amount: payAmount,
+    date: payDate,
+    method: method
+  };
+
+  if (method === 'card') {
+    paymentData.card = {
+      number: document.getElementById('pay-card-number').value,
+      exp: document.getElementById('pay-card-exp').value,
+      cvv: document.getElementById('pay-card-cvv').value
+    };
+  }
+
   try {
     await apiRequest('/payments', {
       method: 'POST',
-      body: JSON.stringify({
-        loanId,
-        instalmentIdx: cuotaIndex,
-        amount: payAmount,
-        date: payDate
-      })
+      body: JSON.stringify(paymentData)
     });
+    
+    if (sendEmail) {
+      const loan = state.loans.find(l => l.id === loanId);
+      const client = state.clients.find(c => c.id === loan.clientId);
+      const companyName = window.appSettings.companyName || 'PréstamosApp';
+      const smtpUser = document.getElementById('smtp-user') ? document.getElementById('smtp-user').value : '';
+      const smtpPass = document.getElementById('smtp-pass') ? document.getElementById('smtp-pass').value : '';
+      
+      if (client && client.email && smtpUser && smtpPass) {
+        const textContent = `Hola ${client.name},\n\nAcabamos de registrar tu pago de ${formatCurrency(payAmount)} para la cuota ${cuotaIndex} de tu préstamo #${loan.id.substring(0,8)}.\n\nGracias,\n${companyName}`;
+        try {
+          await apiRequest('/notify', {
+            method: 'POST',
+            body: JSON.stringify({
+              toEmail: client.email,
+              subject: `Recibo de Pago - ${companyName}`,
+              text: textContent,
+              html: textContent.replace(/\n/g, '<br>'),
+              smtpUser,
+              smtpPass
+            })
+          });
+        } catch (err) {
+          console.warn('No se pudo enviar el correo: ', err);
+        }
+      } else if (sendEmail) {
+        alert("Atención: Para enviar correos debes configurar tus credenciales SMTP en la pestaña de Configuración.");
+      }
+    }
     
     closeModal('modal-pay-cuota');
     await loadData();
@@ -1282,50 +1397,169 @@ function toggleTheme() {
   applyTheme(newTheme);
 }
 
-themeToggleBtn.addEventListener('click', toggleTheme);
-settingsThemeBtn.addEventListener('click', toggleTheme);
+if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
+if (settingsThemeBtn) settingsThemeBtn.addEventListener('click', toggleTheme);
 
 // Exportar base de datos a JSON
-document.getElementById('settings-export-btn').addEventListener('click', () => {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-  const downloadAnchor = document.createElement('a');
-  const dateStr = new Date().toISOString().split('T')[0];
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `respaldo_prestamos_${dateStr}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-});
+const settingsExportBtn = document.getElementById('settings-export-btn');
+if (settingsExportBtn) {
+  settingsExportBtn.addEventListener('click', () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `respaldo_prestamos_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  });
+}
 
 // Importar base de datos
 const fileInput = document.getElementById('import-file-input');
-document.getElementById('settings-import-btn').addEventListener('click', () => {
-  fileInput.click();
-});
+const settingsImportBtn = document.getElementById('settings-import-btn');
+if (settingsImportBtn && fileInput) {
+  settingsImportBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+}
 
-fileInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    try {
-      const importedState = JSON.parse(evt.target.result);
-      // Validaciones simples
-      if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
-        state = importedState;
-        saveState();
-        alert("¡Base de datos restaurada correctamente!");
-        refreshAll();
-      } else {
-        alert("El archivo de respaldo no tiene el formato correcto.");
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        const importedState = JSON.parse(evt.target.result);
+        // Validaciones simples
+        if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
+          state = importedState;
+          saveState();
+          alert("¡Base de datos restaurada correctamente!");
+          fileInput.value = '';
+          refreshAll();
+        } else {
+          alert("El archivo de respaldo no tiene el formato correcto.");
+        }
+      } catch (e) {
+        alert("El archivo no tiene un formato válido.");
       }
-    } catch (err) {
-      alert("Error leyendo el archivo JSON.");
-      console.error(err);
+    };
+    reader.readAsText(file);
+  });
+}
+// --- LÓGICA DE TARJETA ---
+const payMethodSelect = document.getElementById('pay-method-select');
+const payCashFields = document.getElementById('pay-cash-fields');
+const payCardFields = document.getElementById('pay-card-fields');
+
+if (payMethodSelect) {
+  payMethodSelect.addEventListener('change', (e) => {
+    if(e.target.value === 'card') {
+      if(payCashFields) payCashFields.style.display = 'none';
+      if(payCardFields) payCardFields.style.display = 'block';
+    } else {
+      if(payCashFields) payCashFields.style.display = 'block';
+      if(payCardFields) payCardFields.style.display = 'none';
     }
-  };
-  reader.readAsText(file);
+  });
+}
+
+// --- 7. LÓGICA KYC ---
+const kycVideo = document.getElementById('kyc-video');
+const kycCanvas = document.getElementById('kyc-canvas');
+const kycSnapshot = document.getElementById('kyc-snapshot');
+const kycCaptureBtn = document.getElementById('kyc-capture-btn');
+const kycRetakeBtn = document.getElementById('kyc-retake-btn');
+const kycSubmitBtn = document.getElementById('kyc-submit-btn');
+let kycStream = null;
+
+function openKycModal(clientId) {
+  document.getElementById('kyc-client-id').value = clientId;
+  if(kycSnapshot) kycSnapshot.style.display = 'none';
+  if(kycVideo) kycVideo.style.display = 'block';
+  if(kycCaptureBtn) kycCaptureBtn.style.display = 'inline-block';
+  if(kycRetakeBtn) kycRetakeBtn.style.display = 'none';
+  if(kycSubmitBtn) kycSubmitBtn.setAttribute('disabled', 'true');
+  
+  openModal('modal-kyc');
+  startCamera();
+}
+
+async function startCamera() {
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      kycStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if(kycVideo) kycVideo.srcObject = kycStream;
+    } catch (err) {
+      console.error("Error accediendo a cámara: ", err);
+      alert("No se pudo acceder a la cámara.");
+    }
+  }
+}
+
+function stopCamera() {
+  if (kycStream) {
+    kycStream.getTracks().forEach(track => track.stop());
+    kycStream = null;
+  }
+}
+
+if (kycCaptureBtn) {
+  kycCaptureBtn.addEventListener('click', () => {
+    kycCanvas.width = kycVideo.videoWidth;
+    kycCanvas.height = kycVideo.videoHeight;
+    kycCanvas.getContext('2d').drawImage(kycVideo, 0, 0);
+    const dataUrl = kycCanvas.toDataURL('image/jpeg');
+    
+    kycSnapshot.src = dataUrl;
+    kycVideo.style.display = 'none';
+    kycSnapshot.style.display = 'block';
+    
+    kycCaptureBtn.style.display = 'none';
+    kycRetakeBtn.style.display = 'inline-block';
+    kycSubmitBtn.removeAttribute('disabled');
+  });
+}
+
+if (kycRetakeBtn) {
+  kycRetakeBtn.addEventListener('click', () => {
+    kycSnapshot.style.display = 'none';
+    kycVideo.style.display = 'block';
+    kycCaptureBtn.style.display = 'inline-block';
+    kycRetakeBtn.style.display = 'none';
+    kycSubmitBtn.setAttribute('disabled', 'true');
+  });
+}
+
+if (kycSubmitBtn) {
+  kycSubmitBtn.addEventListener('click', async () => {
+    const clientId = document.getElementById('kyc-client-id').value;
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    // Simular el guardado de KYC
+    client.kycStatus = 'verified';
+    client.kycPhoto = kycSnapshot.src;
+    saveState();
+    
+    stopCamera();
+    closeModal('modal-kyc');
+    renderClientsTable();
+    viewClientDetail(clientId);
+    alert('Verificación KYC guardada correctamente.');
+  });
+}
+
+// Detener cámara si se cierra modal KYC de otra manera
+document.querySelectorAll('.close-btn, .btn-secondary').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    if (document.getElementById('modal-kyc').classList.contains('active') === false) {
+      stopCamera();
+    }
+  });
 });
 
 // Semilla de prueba
@@ -1456,6 +1690,65 @@ if (emailBackupForm) {
       lucide.createIcons();
     }
   });
+}
+
+// --- GESTIÓN DE USUARIOS ---
+const addUserForm = document.getElementById('add-user-form');
+if (addUserForm) {
+  addUserForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const usernameInput = document.getElementById('new-user-username');
+    const passwordInput = document.getElementById('new-user-password');
+    const msgEl = document.getElementById('add-user-msg');
+    
+    msgEl.textContent = 'Añadiendo...';
+    msgEl.style.color = 'var(--text-muted)';
+    
+    try {
+      await apiRequest('/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: usernameInput.value,
+          password: passwordInput.value
+        })
+      });
+      
+      msgEl.textContent = 'Usuario añadido exitosamente.';
+      msgEl.style.color = 'var(--success)';
+      addUserForm.reset();
+      loadUsers(); // Recargar la lista
+    } catch (err) {
+      msgEl.textContent = err.message || 'Error al añadir usuario.';
+      msgEl.style.color = 'var(--danger)';
+    }
+  });
+}
+
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  
+  try {
+    const users = await apiRequest('/users');
+    tbody.innerHTML = '';
+    
+    if (users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
+      return;
+    }
+    
+    users.forEach(user => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${user.username}</strong></td>
+        <td><span style="font-size: 0.8rem; color: var(--text-muted);">${user.companyId}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Error cargando usuarios:', err);
+    tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
+  }
 }
 
 // --- INSTALACIÓN DE LA PWA ---
@@ -1679,7 +1972,7 @@ if (finForm) {
   });
 }
 // Descargar copia de base de datos local
-document.getElementById('download-backup-btn')?.addEventListener('click', async () => {
+if (document.getElementById('download-backup-btn')) document.getElementById('download-backup-btn').addEventListener('click', async () => {
   const btn = document.getElementById('download-backup-btn');
   const msgEl = document.getElementById('download-backup-msg');
   btn.disabled = true;
@@ -1733,14 +2026,14 @@ function downloadCSV(csvContent, fileName) {
   document.body.removeChild(link);
 }
 
-document.getElementById('export-clients-btn')?.addEventListener('click', () => {
+if (document.getElementById('export-clients-btn')) document.getElementById('export-clients-btn').addEventListener('click', () => {
   if (state.clients.length === 0) return alert('No hay clientes para exportar');
   const headers = "ID,Nombre,Telefono,Email,Notas,FechaCreacion\n";
   const rows = state.clients.map(c => `"${c.id}","${c.name}","${c.phone}","${c.email}","${(c.notes || '').replace(/"/g, '""')}","${c.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'clientes.csv');
 });
 
-document.getElementById('export-loans-btn')?.addEventListener('click', () => {
+if (document.getElementById('export-loans-btn')) document.getElementById('export-loans-btn').addEventListener('click', () => {
   if (state.loans.length === 0) return alert('No hay préstamos para exportar');
   const headers = "ID,Cliente,Monto,Tasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
   const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.annualRate}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
@@ -1766,3 +2059,161 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inicializar Lucide Icons
   lucide.createIcons();
 });
+
+// Manejo de estado de red (Online / Offline)
+function updateOnlineStatus() {
+  const banner = document.getElementById('offline-banner');
+  if (banner) {
+    if (navigator.onLine) {
+      banner.style.display = 'none';
+      document.body.style.paddingTop = '0';
+    } else {
+      banner.style.display = 'block';
+      document.body.style.paddingTop = '30px'; // Espacio para el banner
+    }
+  }
+}
+
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+// Chequear estado inicial
+updateOnlineStatus();
+
+// ============================================
+// FUNCIONES ADICIONALES (RECIBOS, EXPORTAR)
+// ============================================
+
+function printReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  
+  const receiptHTML = `
+    <html>
+      <head>
+        <title>Recibo de Pago</title>
+        <style>
+          body { font-family: monospace; font-size: 14px; max-width: 300px; margin: 0 auto; padding: 20px; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .line { border-top: 1px dashed #000; margin: 10px 0; }
+          table { width: 100%; margin-top: 10px; }
+          td { padding: 2px 0; }
+          .right { text-align: right; }
+          @media print {
+            body { max-width: 100%; margin: 0; padding: 0; }
+            @page { margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 1.2em;">${companyName}</div>
+        <div class="center">COMPROBANTE DE PAGO</div>
+        <div class="line"></div>
+        <table>
+          <tr><td>Fecha:</td><td class="right">${formatDateReadable(payment.date)}</td></tr>
+          <tr><td>Cliente:</td><td class="right">${loan.clientName}</td></tr>
+          <tr><td>Préstamo:</td><td class="right">#${loan.id.substring(0,8)}</td></tr>
+          <tr><td>Cuota No:</td><td class="right">${inst.index}</td></tr>
+        </table>
+        <div class="line"></div>
+        <table>
+          <tr><td>Capital:</td><td class="right">${formatCurrency(inst.capital)}</td></tr>
+          <tr><td>Interés:</td><td class="right">${formatCurrency(inst.interest)}</td></tr>
+          <tr class="bold"><td>TOTAL PAGADO:</td><td class="right">${formatCurrency(payment.amount)}</td></tr>
+        </table>
+        <div class="line"></div>
+        <div class="center" style="font-size: 0.9em;">¡Gracias por su pago!</div>
+        <div class="center" style="font-size: 0.8em; margin-top: 10px;">Balance Pendiente: ${formatCurrency(loan.remainingBalance)}</div>
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+    </html>
+  `;
+  
+  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  if (printWindow) {
+    printWindow.document.write(receiptHTML);
+    printWindow.document.close();
+    printWindow.focus();
+  } else {
+    alert("Por favor, permite las ventanas emergentes (pop-ups) para imprimir el recibo.");
+  }
+}
+
+function sendWhatsAppReceipt(loanId, cuotaIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const client = state.clients.find(c => c.id === loan.clientId);
+  if (!client || !client.phone) {
+    alert("El cliente no tiene un número de celular registrado.");
+    return;
+  }
+  const inst = loan.instalments.find(i => i.index === cuotaIndex);
+  if (!inst) return;
+  const payment = (inst.payments && inst.payments[0]) ? inst.payments[0] : { date: new Date().toISOString(), amount: inst.amount };
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  
+  const textMessage = `*RECIBO DE PAGO - ${companyName}*\n` +
+    `--------------------------------------\n` +
+    `*Fecha:* ${formatDateReadable(payment.date)}\n` +
+    `*Cliente:* ${loan.clientName}\n` +
+    `*Préstamo:* #${loan.id.substring(0,8)}\n` +
+    `*Cuota Nº:* ${inst.index}\n` +
+    `--------------------------------------\n` +
+    `*Capital:* ${formatCurrency(inst.capital)}\n` +
+    `*Interés:* ${formatCurrency(inst.interest)}\n` +
+    `*TOTAL PAGADO:* ${formatCurrency(payment.amount)}\n` +
+    `--------------------------------------\n` +
+    `*Balance Pendiente:* ${formatCurrency(loan.remainingBalance)}\n\n` +
+    `¡Gracias por su pago!`;
+    
+  const cleanPhone = client.phone.replace(/\D/g, '');
+  const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+  window.open(waUrl, '_blank');
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportClientsCSV() {
+  const headers = ['ID', 'Nombre', 'Teléfono', 'Correo', 'Notas', 'Fecha Registro'];
+  const rows = state.clients.map(c => [
+    c.id, c.name, c.phone || '', c.email || '', (c.notes || '').replace(/"/g, '""'), c.createdAt
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+  });
+  
+  downloadCSV(csvContent, `clientes_${new Date().toISOString().split('T')[0]}.csv`);
+}
+
+function exportLoansCSV() {
+  const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
+  const rows = state.loans.map(l => [
+    l.id, l.clientName, l.amount, l.rate, (FREQUENCIES[l.frequency] ? FREQUENCIES[l.frequency].name : null) || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+  ]);
+  
+  let csvContent = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+  });
+  
+  downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
+}
+

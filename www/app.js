@@ -103,29 +103,32 @@ function showLogin() {
 }
 
 // Lógica del formulario de login
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const user = document.getElementById('login-username').value;
-  const pass = document.getElementById('login-password').value;
-  const errorEl = document.getElementById('login-error');
-  
-  try {
-    const res = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: user, password: pass })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error de autenticación');
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const user = document.getElementById('login-username').value;
+    const pass = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error');
     
-    localStorage.setItem('prestamos_auth_token', data.token);
-    errorEl.classList.add('d-none');
-    loadData();
-  } catch (err) {
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('d-none');
-  }
-});
+    try {
+      const res = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error de autenticación');
+      
+      localStorage.setItem('prestamos_auth_token', data.token);
+      errorEl.classList.add('d-none');
+      loadData();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('d-none');
+    }
+  });
+}
 
 // Guardar preferencias locales (ej. tema)
 function savePreferences() {
@@ -458,13 +461,19 @@ navLinks.forEach(link => {
   });
 });
 
-// Registrar eventos de botones rápidos
-document.getElementById('quick-loan-btn').addEventListener('click', () => {
-  switchSection('calculator');
-});
-document.getElementById('new-loan-shortcut-btn').addEventListener('click', () => {
-  switchSection('calculator');
-});
+// Registrar eventos de botones rápidos (con verificación de existencia)
+  const quickLoanBtn = document.getElementById('quick-loan-btn');
+  if (quickLoanBtn) {
+    quickLoanBtn.addEventListener('click', () => {
+      switchSection('calculator');
+    });
+  }
+  const newLoanShortcutBtn = document.getElementById('new-loan-shortcut-btn');
+  if (newLoanShortcutBtn) {
+    newLoanShortcutBtn.addEventListener('click', () => {
+      switchSection('calculator');
+    });
+  }
 
 // --- 5. LÓGICA DE NEGOCIO EN EL FRONTEND ---
 

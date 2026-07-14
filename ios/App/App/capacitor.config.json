@@ -1,6 +1,19 @@
 {
-	"appId": "com.example.prestamosapp",
-	"appName": "prestamosapp",
+	"appId": "com.prestamosapp.saas",
+	"appName": "PréstamosApp",
 	"webDir": "www",
-	"packageClassList": []
+	"server": {
+		"cleartext": true
+	},
+	"plugins": {
+		"CapacitorCookies": {
+			"enabled": true
+		},
+		"CapacitorHttp": {
+			"enabled": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin"
+	]
 }
