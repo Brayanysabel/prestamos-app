@@ -96,6 +96,12 @@
             <span>Configuración</span>
           </a>
         </li>
+        <li>
+          <a class="nav-link" data-target="plans">
+            <i data-lucide="star"></i>
+            <span>Mi Plan</span>
+          </a>
+        </li>
         <li style="margin-top: 1rem;">
           <button id="install-app-btn" class="btn btn-primary" style="width: 100%; display: none; padding: 0.5rem;">
             <i data-lucide="download"></i> Instalar App
@@ -611,6 +617,34 @@
               <i data-lucide="trash-2"></i> Borrar Todo
             </button>
           </div>
+        </div>
+      </section>
+        <!-- 7. SECCIÓN MI PLAN -->
+      <section id="section-plans" class="content-section d-none">
+        <div class="card mb-4" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white;">
+          <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+            <h2 class="card-title" style="color: white;">Suscripción Actual</h2>
+          </div>
+          <div class="card-body">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <p style="margin-bottom: 0.5rem; opacity: 0.9;">Plan Activo</p>
+                <h3 id="current-plan-name" style="font-size: 2rem; margin: 0; text-transform: capitalize;">-</h3>
+              </div>
+              <div style="text-align: right;">
+                <p style="margin-bottom: 0.5rem; opacity: 0.9;">Uso de Préstamos</p>
+                <h3 style="margin: 0;"><span id="current-plan-usage">0</span> / <span id="current-plan-max">0</span></h3>
+              </div>
+            </div>
+            <div style="margin-top: 1.5rem; background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
+              <div id="current-plan-progress" style="background: white; width: 0%; height: 100%; border-radius: 4px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="mb-4">Planes Disponibles</h3>
+        <div class="plans-grid" id="plans-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+          <!-- Se llenan con JS -->
         </div>
       </section>
       

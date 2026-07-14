@@ -417,7 +417,8 @@ const sectionMeta = {
   calculator: { title: 'Calculadora de Préstamos', subtitle: 'Simula créditos y proyecta tablas de amortización.' },
   clients: { title: 'Gestión de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
   loans: { title: 'Préstamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
-  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' }
+  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' },
+  plans: { title: 'Mi Plan', subtitle: 'Gestiona tu suscripción y límites' }
 };
 
 function switchSection(targetSectionId) {
@@ -456,6 +457,8 @@ function switchSection(targetSectionId) {
     renderLoansTable();
   } else if (targetSectionId === 'calculator') {
     populateClientSelect();
+  } else if (targetSectionId === 'plans') {
+    renderPlansSection();
   }
 }
 
@@ -2238,5 +2241,78 @@ function exportLoansCSV() {
   });
   
   downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
+}
+
+// --- LOGICA DE PLANES ---
+async function renderPlansSection() {
+  try {
+    const [companyInfo, plans] = await Promise.all([
+      apiRequest('/my-company'),
+      apiRequest('/saas/public-plans')
+    ]);
+
+    // Actualizar sección de plan actual
+    document.getElementById('current-plan-name').textContent = companyInfo.plan || 'Desconocido';
+    document.getElementById('current-plan-usage').textContent = companyInfo.current_loans || 0;
+    document.getElementById('current-plan-max').textContent = companyInfo.max_loans || 0;
+
+    let progress = 0;
+    if (companyInfo.max_loans > 0) {
+      progress = Math.min(100, ((companyInfo.current_loans || 0) / companyInfo.max_loans) * 100);
+    }
+    document.getElementById('current-plan-progress').style.width = `${progress}%`;
+    if (progress > 90) document.getElementById('current-plan-progress').style.backgroundColor = 'var(--danger)';
+    else document.getElementById('current-plan-progress').style.backgroundColor = 'white';
+
+    // Renderizar tarjetas de planes
+    const plansContainer = document.getElementById('plans-container');
+    plansContainer.innerHTML = '';
+
+    plans.forEach(plan => {
+      const isCurrent = companyInfo.plan === plan.id;
+      
+      const card = document.createElement('div');
+      card.className = `card plan-card ${isCurrent ? 'current-plan' : ''}`;
+      card.style.display = 'flex';
+      card.style.flexDirection = 'column';
+      card.style.height = '100%';
+      card.style.border = isCurrent ? '2px solid var(--primary)' : '1px solid var(--border)';
+      if (isCurrent) card.style.transform = 'scale(1.02)';
+      card.style.background = 'var(--card-bg)';
+      card.style.borderRadius = 'var(--radius-lg)';
+      card.style.padding = '1.5rem';
+      
+      card.innerHTML = `
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          ${isCurrent ? '<span class="badge badge-primary mb-2" style="align-self: flex-start; margin-bottom:1rem;">Tu Plan Actual</span>' : ''}
+          <h3 class="mb-2">${plan.name}</h3>
+          <h2 class="mb-4" style="color: var(--primary); font-size: 2.5rem; font-weight: 800;">$${plan.price}<span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">/mes</span></h2>
+          
+          <ul style="list-style: none; padding: 0; margin-bottom: 2rem; flex: 1;">
+            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
+              Hasta <strong>${plan.max_loans}</strong> préstamos
+            </li>
+            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
+              Hasta <strong>${plan.max_users}</strong> usuarios
+            </li>
+            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
+              Soporte técnico prioritario
+            </li>
+          </ul>
+          
+          <a href="https://wa.me/18091234567?text=Hola,%20deseo%20cambiar%20mi%20plan%20a%20${plan.name}%20en%20PrestamosApp" target="_blank" class="btn ${isCurrent ? 'btn-secondary' : 'btn-primary'}" style="width: 100%; text-align: center; display: block; padding: 0.75rem;">
+            ${isCurrent ? 'Mantener Plan' : 'Mejorar a ' + plan.name}
+          </a>
+        </div>
+      `;
+      plansContainer.appendChild(card);
+    });
+    lucide.createIcons();
+  } catch (err) {
+    console.error('Error cargando planes:', err);
+  }
 }
 

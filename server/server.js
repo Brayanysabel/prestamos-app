@@ -967,6 +967,33 @@ app.delete('/api/saas/companies/:id', requireSuperAdmin, (req, res) => {
   });
 });
 
+// Endpoints Públicos para Suscripciones
+app.get('/api/saas/public-plans', (req, res) => {
+  db.all('SELECT * FROM saas_plans ORDER BY price ASC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.get('/api/my-company', (req, res) => {
+  if (!req.user || !req.user.companyId) return res.status(401).json({ error: 'No autorizado' });
+  
+  // Obtener info de la compañía
+  db.get('SELECT * FROM companies WHERE id = ?', [req.user.companyId], (err, comp) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!comp) return res.status(404).json({ error: 'Compañía no encontrada' });
+    
+    // Contar préstamos activos
+    db.get('SELECT COUNT(*) as count FROM loans WHERE clientId IN (SELECT id FROM clients WHERE companyId = ?)', [req.user.companyId], (err, loanCountRow) => {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      // Contar clientes y otros si se desea
+      comp.current_loans = loanCountRow.count;
+      res.json(comp);
+    });
+  });
+});
+
 // SaaS Plans CRUD
 app.get('/api/saas/plans', requireSuperAdmin, (req, res) => {
   db.all('SELECT * FROM saas_plans ORDER BY price ASC', [], (err, rows) => {
