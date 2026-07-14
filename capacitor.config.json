@@ -3,7 +3,7 @@
   "appName": "PréstamosApp",
   "webDir": "www",
   "server": {
-    "cleartext": false
+    "cleartext": true
   },
   "plugins": {
     "CapacitorCookies": {

@@ -24,20 +24,7 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
-
-// --- LIMPIEZA FORZADA DE CACHÉ (SOLO UNA VEZ POR VERSIÓN) ---
-if (!localStorage.getItem('prestamos_cache_cleared_v6')) {
-  if ('caches' in window) {
-    caches.keys().then(names => {
-      names.forEach(name => caches.delete(name));
-    });
-  }
-  // Eliminar configuraciones antiguas que puedan causar problemas
-  localStorage.removeItem('prestamos_theme');
-  localStorage.setItem('prestamos_cache_cleared_v6', 'true');
-  console.log("Caché y ajustes antiguos limpiados exitosamente.");
-}
+const API_URL = window.PRESTAMOS_API_URL || '/api';
 
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
@@ -103,32 +90,29 @@ function showLogin() {
 }
 
 // Lógica del formulario de login
-const loginForm = document.getElementById('login-form');
-if (loginForm) {
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const user = document.getElementById('login-username').value;
-    const pass = document.getElementById('login-password').value;
-    const errorEl = document.getElementById('login-error');
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = document.getElementById('login-username').value;
+  const pass = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  
+  try {
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error de autenticación');
     
-    try {
-      const res = await fetch(`${API_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, password: pass })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error de autenticación');
-      
-      localStorage.setItem('prestamos_auth_token', data.token);
-      errorEl.classList.add('d-none');
-      loadData();
-    } catch (err) {
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('d-none');
-    }
-  });
-}
+    localStorage.setItem('prestamos_auth_token', data.token);
+    errorEl.classList.add('d-none');
+    loadData();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('d-none');
+  }
+});
 
 // Guardar preferencias locales (ej. tema)
 function savePreferences() {
@@ -461,19 +445,13 @@ navLinks.forEach(link => {
   });
 });
 
-// Registrar eventos de botones rápidos (con verificación de existencia)
-  const quickLoanBtn = document.getElementById('quick-loan-btn');
-  if (quickLoanBtn) {
-    quickLoanBtn.addEventListener('click', () => {
-      switchSection('calculator');
-    });
-  }
-  const newLoanShortcutBtn = document.getElementById('new-loan-shortcut-btn');
-  if (newLoanShortcutBtn) {
-    newLoanShortcutBtn.addEventListener('click', () => {
-      switchSection('calculator');
-    });
-  }
+// Registrar eventos de botones rápidos
+document.getElementById('quick-loan-btn').addEventListener('click', () => {
+  switchSection('calculator');
+});
+document.getElementById('new-loan-shortcut-btn').addEventListener('click', () => {
+  switchSection('calculator');
+});
 
 // --- 5. LÓGICA DE NEGOCIO EN EL FRONTEND ---
 
@@ -1427,29 +1405,26 @@ if (settingsImportBtn && fileInput) {
 if (fileInput) {
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      try {
-        const importedState = JSON.parse(evt.target.result);
-        // Validaciones simples
-        if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
-          state = importedState;
-          saveState();
-          alert("¡Base de datos restaurada correctamente!");
-          fileInput.value = '';
-          refreshAll();
-        } else {
-          alert("El archivo de respaldo no tiene el formato correcto.");
-        }
-      } catch (e) {
-        alert("El archivo no tiene un formato válido.");
-      }
-    };
-    reader.readAsText(file);
-  });
-}
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const importedState = JSON.parse(evt.target.result);
+      // Validaciones simples
+      if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
+        state = importedState;
+        saveState();
+        alert("¡Base de datos restaurada correctamente!");
+        fileInput.value = '';
+      refreshAll();
+    } catch (e) {
+      alert("El archivo no tiene un formato válido.");
+    }
+  };
+  reader.readAsText(file);
+});
+
 // --- LÓGICA DE TARJETA ---
 const payMethodSelect = document.getElementById('pay-method-select');
 const payCashFields = document.getElementById('pay-cash-fields');
@@ -1972,7 +1947,7 @@ if (finForm) {
   });
 }
 // Descargar copia de base de datos local
-if (document.getElementById('download-backup-btn')) document.getElementById('download-backup-btn').addEventListener('click', async () => {
+document.getElementById('download-backup-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('download-backup-btn');
   const msgEl = document.getElementById('download-backup-msg');
   btn.disabled = true;
@@ -2026,14 +2001,14 @@ function downloadCSV(csvContent, fileName) {
   document.body.removeChild(link);
 }
 
-if (document.getElementById('export-clients-btn')) document.getElementById('export-clients-btn').addEventListener('click', () => {
+document.getElementById('export-clients-btn')?.addEventListener('click', () => {
   if (state.clients.length === 0) return alert('No hay clientes para exportar');
   const headers = "ID,Nombre,Telefono,Email,Notas,FechaCreacion\n";
   const rows = state.clients.map(c => `"${c.id}","${c.name}","${c.phone}","${c.email}","${(c.notes || '').replace(/"/g, '""')}","${c.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'clientes.csv');
 });
 
-if (document.getElementById('export-loans-btn')) document.getElementById('export-loans-btn').addEventListener('click', () => {
+document.getElementById('export-loans-btn')?.addEventListener('click', () => {
   if (state.loans.length === 0) return alert('No hay préstamos para exportar');
   const headers = "ID,Cliente,Monto,Tasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
   const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.annualRate}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
@@ -2206,7 +2181,7 @@ function exportClientsCSV() {
 function exportLoansCSV() {
   const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
   const rows = state.loans.map(l => [
-    l.id, l.clientName, l.amount, l.rate, (FREQUENCIES[l.frequency] ? FREQUENCIES[l.frequency].name : null) || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+    l.id, l.clientName, l.amount, l.rate, FREQUENCIES[l.frequency]?.name || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
   ]);
   
   let csvContent = headers.join(',') + '\n';

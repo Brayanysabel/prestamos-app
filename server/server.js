@@ -22,6 +22,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
+      connectSrc: ["'self'", "https://unpkg.com"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "https:", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
@@ -31,10 +32,13 @@ app.use(helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"]
     }
-  }
+  },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false
 })); // Cabeceras de seguridad con CSP personalizado
 app.use(cookieParser());
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // Rate Limiting para Login

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VentasApp">
+  <title>VentasApp - Sistema de Ventas</title>
+  <link rel="stylesheet" href="style.css">
+  <meta name="theme-color" content="#09090b">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+  <div id="app">
+    <nav class="navbar">
+      <div class="nav-left">
+        <button class="nav-item" onclick="toggleSidebar()" aria-label="Abrir menú">
+          <span style="font-size: 1.25rem;">&#9776;</span>
+        </button>
+        <span class="brand">VentasApp</span>
+      </div>
+      <div class="nav-right">
+        <span id="clock" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+      </div>
+    </nav>
+
+    <div class="app-layout">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-title">Principal</div>
+          <button class="nav-item active" onclick="switchSection('products', this)">
+            <span>📦</span> Productos
+          </button>
+          <button class="nav-item" onclick="switchSection('clients', this)">
+            <span>👥</span> Clientes
+          </button>
+          <button class="nav-item" onclick="switchSection('sales', this)">
+            <span>🛒</span> Ventas
+          </button>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-title">Finanzas</div>
+          <button class="nav-item" onclick="switchSection('payments', this)">
+            <span>💳</span> Pagos
+          </button>
+          <button class="nav-item" onclick="switchSection('expenses', this)">
+            <span>🧾</span> Gastos
+          </button>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-title">Reportes</div>
+          <button class="nav-item" onclick="switchSection('reports', this)">
+            <span>📊</span> Resumen
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <!-- PRODUCTS -->
+        <section id="section-products" class="section active">
+          <div class="section-header">
+            <h2>Productos</h2>
+            <button class="btn btn-primary" onclick="openProductModal()">+ Nuevo Producto</button>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <input type="search" id="product-search" placeholder="Buscar producto por nombre..." autocomplete="off" style="margin-bottom:1rem; padding:0.65rem 0.85rem; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:0.95rem; width:100%;">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>Nombre</th><th>Categoría</th><th>Stock</th><th>Precio Venta</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="products-table"></tbody>
+                </table>
+              </div>
+              <div id="products-empty" class="empty-state d-none">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-title">Sin productos</div>
+                <div class="empty-state-sub">Agrega tu primer producto para comenzar.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CLIENTS -->
+        <section id="section-clients" class="section">
+          <div class="section-header">
+            <h2>Clientes</h2>
+            <button class="btn btn-primary" onclick="openClientModal()">+ Nuevo Cliente</button>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="clients-table"></tbody>
+                </table>
+              </div>
+              <div id="clients-empty" class="empty-state d-none">
+                <div class="empty-state-icon">👥</div>
+                <div class="empty-state-title">Sin clientes</div>
+                <div class="empty-state-sub">Registra tu primer cliente.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SALES -->
+        <section id="section-sales" class="section">
+          <div class="section-header">
+            <h2>Ventas</h2>
+            <button class="btn btn-primary" onclick="openSaleModal()">+ Nueva Venta</button>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Cliente</th><th>Total</th><th>Método</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="sales-table"></tbody>
+                </table>
+              </div>
+              <div id="sales-empty" class="empty-state d-none">
+                <div class="empty-state-icon">🛒</div>
+                <div class="empty-state-title">Sin ventas</div>
+                <div class="empty-state-sub">Crea tu primera venta para ver el historial.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PAYMENTS -->
+        <section id="section-payments" class="section">
+          <div class="section-header">
+            <h2>Pagos</h2>
+            <button class="btn btn-primary" onclick="openPaymentModal()">+ Registrar Pago</button>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Venta</th><th>Monto</th><th>Método</th></tr>
+                  </thead>
+                  <tbody id="payments-table"></tbody>
+                </table>
+              </div>
+              <div id="payments-empty" class="empty-state d-none">
+                <div class="empty-state-icon">💳</div>
+                <div class="empty-state-title">Sin pagos</div>
+                <div class="empty-state-sub">Registra un pago asociado a una venta.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- EXPENSES -->
+        <section id="section-expenses" class="section">
+          <div class="section-header">
+            <h2>Gastos</h2>
+            <button class="btn btn-primary" onclick="openExpenseModal()">+ Nuevo Gasto</button>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="expenses-table"></tbody>
+                </table>
+              </div>
+              <div id="expenses-empty" class="empty-state d-none">
+                <div class="empty-state-icon">🧾</div>
+                <div class="empty-state-title">Sin gastos</div>
+                <div class="empty-state-sub">Aún no registras gastos del negocio.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- REPORTS -->
+        <section id="section-reports" class="section">
+          <div class="section-header">
+            <h2>Reporte del Mes</h2>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Ventas del Mes</div>
+              <div class="stat-value" id="stat-sales">RD$ 0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Gastos del Mes</div>
+              <div class="stat-value" id="stat-expenses">RD$ 0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Ganancia</div>
+              <div class="stat-value" id="stat-profit">RD$ 0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Ventas Totales</div>
+              <div class="stat-value" id="stat-count">0</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Productos Más Vendidos</h3>
+            </div>
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Producto</th><th>Cantidad</th><th>Total</th></tr></thead>
+                  <tbody id="top-products-table"></tbody>
+                </table>
+              </div>
+              <div id="top-products-empty" class="empty-state d-none">
+                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-title">Sin datos</div>
+                <div class="empty-state-sub">Registra ventas para ver los productos más vendidos.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Product Modal -->
+  <div id="modal-product" class="modal-overlay d-none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Producto</h3>
+        <button class="modal-close" onclick="closeModal('modal-product')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="product-form">
+          <input type="hidden" id="prod-id">
+          <div class="form-group"><label>Nombre</label><input type="text" id="prod-name" required></div>
+          <div class="form-group"><label>Descripción</label><input type="text" id="prod-description"></div>
+          <div class="form-group"><label>Categoría</label><input type="text" id="prod-category"></div>
+          <div class="form-group"><label>Stock</label><input type="number" id="prod-stock" value="0"></div>
+          <div class="form-group"><label>Precio Costo</label><input type="number" id="prod-cost" step="0.01" value="0"></div>
+          <div class="form-group"><label>Precio Venta</label><input type="number" id="prod-sale" step="0.01" value="0"></div>
+          <div class="form-group"><label>Proveedor</label><input type="text" id="prod-supplier"></div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Guardar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client Modal -->
+  <div id="modal-client" class="modal-overlay d-none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Cliente</h3>
+        <button class="modal-close" onclick="closeModal('modal-client')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="client-form">
+          <input type="hidden" id="cli-id">
+          <div class="form-group"><label>Nombre</label><input type="text" id="cli-name" required></div>
+          <div class="form-group"><label>Teléfono</label><input type="text" id="cli-phone"></div>
+          <div class="form-group"><label>Email</label><input type="email" id="cli-email"></div>
+          <div class="form-group"><label>Dirección</label><input type="text" id="cli-address"></div>
+          <div class="form-group"><label>Notas</label><input type="text" id="cli-notes"></div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Guardar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sale Modal -->
+  <div id="modal-sale" class="modal-overlay d-none">
+    <div class="modal" style="max-width: 720px;">
+      <div class="modal-header">
+        <h3>Nueva Venta</h3>
+        <button class="modal-close" onclick="closeModal('modal-sale')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="sale-form">
+          <div class="form-group">
+            <label>Cliente</label>
+            <select id="sale-client-id"><option value="">Consumidor Final</option></select>
+          </div>
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="sale-date" required>
+          </div>
+          <div class="form-group">
+            <label>Método de Pago</label>
+            <select id="sale-method" required>
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </div>
+          <div id="sale-items-container">
+            <div class="sale-item-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <select class="sale-product-select" required><option value="">Producto</option></select>
+              <input type="number" class="sale-qty" placeholder="Cant" value="1" min="1" required>
+              <input type="number" class="sale-price" placeholder="Precio" step="0.01" required>
+              <input type="text" class="sale-subtotal" placeholder="Subtotal" readonly>
+              <button type="button" class="btn btn-danger" onclick="removeSaleItem(this)" style="padding: 0.5rem;">&times;</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="addSaleItem()" style="margin-bottom: 1rem;">+ Agregar Producto</button>
+          <div style="display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 0.75rem;">
+            <span>Subtotal:</span><span id="sale-subtotal">RD$ 0</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 1rem;">
+            <span>Total:</span><span id="sale-total">RD$ 0</span>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Registrar Venta</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Modal -->
+  <div id="modal-payment" class="modal-overlay d-none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Registrar Pago</h3>
+        <button class="modal-close" onclick="closeModal('modal-payment')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="payment-form">
+          <div class="form-group">
+            <label>Venta</label>
+            <select id="payment-sale-id"><option value="">Seleccionar venta</option></select>
+          </div>
+          <div class="form-group"><label>Monto</label><input type="number" id="pay-amount" step="0.01" required></div>
+          <div class="form-group"><label>Fecha</label><input type="date" id="pay-date" required></div>
+          <div class="form-group">
+            <label>Método</label>
+            <select id="pay-method">
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Notas</label><input type="text" id="pay-notes"></div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Guardar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expense Modal -->
+  <div id="modal-expense" class="modal-overlay d-none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Gasto</h3>
+        <button class="modal-close" onclick="closeModal('modal-expense')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="expense-form">
+          <input type="hidden" id="exp-id">
+          <div class="form-group"><label>Fecha</label><input type="date" id="exp-date" required></div>
+          <div class="form-group"><label>Descripción</label><input type="text" id="exp-description" required></div>
+          <div class="form-group"><label>Categoría</label><input type="text" id="exp-category" required></div>
+          <div class="form-group"><label>Monto</label><input type="number" id="exp-amount" step="0.01" required></div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Guardar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" style="position: fixed; top: 1rem; right: 1rem; z-index: 3000; display: flex; flex-direction: column; gap: 0.5rem;"></div>
+
+  <nav class="bottom-nav">
+    <button class="bottom-nav-item active" data-section="products" onclick="switchSection('products', this)">
+      <span style="font-size: 1.25rem;">📦</span><span>Productos</span>
+    </button>
+    <button class="bottom-nav-item" data-section="clients" onclick="switchSection('clients', this)">
+      <span style="font-size: 1.25rem;">👥</span><span>Clientes</span>
+    </button>
+    <button class="bottom-nav-item" data-section="sales" onclick="switchSection('sales', this)">
+      <span style="font-size: 1.25rem;">🛒</span><span>Ventas</span>
+    </button>
+    <button class="bottom-nav-item" data-section="payments" onclick="switchSection('payments', this)">
+      <span style="font-size: 1.25rem;">💳</span><span>Pagos</span>
+    </button>
+    <button class="bottom-nav-item" data-section="expenses" onclick="switchSection('expenses', this)">
+      <span style="font-size: 1.25rem;">🧾</span><span>Gastos</span>
+    </button>
+    <button class="bottom-nav-item" data-section="reports" onclick="switchSection('reports', this)">
+      <span style="font-size: 1.25rem;">📊</span><span>Resumen</span>
+    </button>
+  </nav>
+
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => console.log('SW error:', err));
+      });
+    }
+  </script>
+</body>
+</html>

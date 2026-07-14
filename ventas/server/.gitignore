@@ -1,0 +1,5 @@
+server/dbWrapper.js
+server/.env
+node_modules/
+*.log
+.DS_Store

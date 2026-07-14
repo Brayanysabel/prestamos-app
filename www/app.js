@@ -24,7 +24,20 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-const API_URL = window.PRESTAMOS_API_URL || '/api';
+const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
+
+// --- LIMPIEZA FORZADA DE CACHÉ (SOLO UNA VEZ POR VERSIÓN) ---
+if (!localStorage.getItem('prestamos_cache_cleared_v6')) {
+  if ('caches' in window) {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+    });
+  }
+  // Eliminar configuraciones antiguas que puedan causar problemas
+  localStorage.removeItem('prestamos_theme');
+  localStorage.setItem('prestamos_cache_cleared_v6', 'true');
+  console.log("Caché y ajustes antiguos limpiados exitosamente.");
+}
 
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
@@ -58,7 +71,8 @@ async function loadData() {
       apiRequest('/loans')
     ]);
     state.clients = clients || [];
-    state.loans = (loans || []).map(normalizeLoan);
+    state.loans = loans || [];
+    // Ensure nested fields
     state.loans.forEach(l => {
       if (!l.instalments) l.instalments = [];
       l.instalments.forEach(i => {
@@ -66,8 +80,13 @@ async function loadData() {
       });
     });
     
-    document.getElementById('login-screen').classList.remove('active');
-    document.getElementById('main-app').classList.remove('d-none');
+    const loginScreen = document.getElementById('login-screen');
+    if (loginScreen) loginScreen.classList.remove('active');
+    
+    let appWrapper = document.getElementById('app-wrapper');
+    if (!appWrapper) appWrapper = document.getElementById('main-app');
+    if (appWrapper) appWrapper.classList.remove('d-none');
+    
     refreshAll();
   } catch (e) {
     console.error('Error cargando datos', e);
@@ -75,8 +94,12 @@ async function loadData() {
 }
 
 function showLogin() {
-  document.getElementById('login-screen').classList.add('active');
-  document.getElementById('main-app').classList.add('d-none');
+  const loginScreen = document.getElementById('login-screen');
+  if (loginScreen) loginScreen.classList.add('active');
+  
+  let appWrapper = document.getElementById('app-wrapper');
+  if (!appWrapper) appWrapper = document.getElementById('main-app');
+  if (appWrapper) appWrapper.classList.add('d-none');
 }
 
 // Lógica del formulario de login
@@ -150,9 +173,9 @@ function seedMockData() {
   ];
 
   // Préstamos Semilla
-  // 1. Préstamo de Juan Pérez: Pagado. Monto: $1000, 10% interes anual, 3 cuotas mensuales, Francés. Creado hace 90 días.
+  // 1. Préstamo de Juan Pérez: Pagado. Monto: $1000, 10% interes, 3 cuotas mensuales, Francés. Creado hace 90 días.
   const loan1Date = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const loan1 = generateLoanObject("cli_1", "Juan Carlos Pérez", 1000, 12, 'annual', 3, "monthly", "french", loan1Date);
+  const loan1 = generateLoanObject("cli_1", "Juan Carlos Pérez", 1000, 12, 3, "monthly", "french", loan1Date);
   // Marcar todas las cuotas como pagadas
   loan1.instalments.forEach((inst, index) => {
     inst.status = 'paid';
@@ -167,9 +190,9 @@ function seedMockData() {
   loan1.remainingBalance = 0;
   loan1.status = 'paid';
 
-  // 2. Préstamo de María Gómez: Activo con abonos. Monto: $2000, 15% interés anual, 6 cuotas quincenales, Francés. Creado hace 45 días.
+  // 2. Préstamo de María Gómez: Activo con abonos. Monto: $2000, 15% interés, 6 cuotas quincenales, Francés. Creado hace 45 días.
   const loan2Date = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
-  const loan2 = generateLoanObject("cli_2", "María Altagracia Gómez", 2000, 15, 'annual', 6, "biweekly", "french", loan2Date);
+  const loan2 = generateLoanObject("cli_2", "María Altagracia Gómez", 2000, 15, 6, "biweekly", "french", loan2Date);
   // Pagar las primeras 3 cuotas
   let totalPaidL2 = 0;
   for (let i = 0; i < 3; i++) {
@@ -186,10 +209,10 @@ function seedMockData() {
   loan2.remainingBalance = parseFloat((loan2.totalPayable - totalPaidL2).toFixed(2));
   loan2.status = 'active';
 
-  // 3. Préstamo de Pedro Sánchez: Vencido (Atrasado). Monto: $1500, 18% interés anual, 4 cuotas semanales, Francés. Creado hace 25 días.
+  // 3. Préstamo de Pedro Sánchez: Vencido (Atrasado). Monto: $1500, 18% interés, 4 cuotas semanales, Francés. Creado hace 25 días.
   // Como es semanal, ya pasaron las 4 semanas. Supongamos que solo pagó la cuota 1 y 2. La 3 y 4 están vencidas.
   const loan3Date = new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000);
-  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio Sánchez", 1500, 18, 'annual', 4, "weekly", "french", loan3Date);
+  const loan3 = generateLoanObject("cli_3", "Pedro Ignacio Sánchez", 1500, 18, 4, "weekly", "french", loan3Date);
   
   // Pagar cuota 1 y 2
   let totalPaidL3 = 0;
@@ -223,17 +246,9 @@ function seedMockData() {
 // --- 3. MOTOR MATEMÁTICO DE PRÉSTAMOS ---
 
 // Función para calcular amortización
-function calculateAmortization(amount, rate, rateType, term, frequency, type, startDate) {
+function calculateAmortization(amount, annualRate, term, frequency, type, startDate) {
   const freqData = FREQUENCIES[frequency];
   const periodsPerYear = freqData.periodsPerYear;
-  
-  // Convertir tasa a anual según el tipo
-  let annualRate = rate;
-  if (rateType === 'monthly') {
-    annualRate = rate * 12;
-  } else if (rateType === 'daily') {
-    annualRate = rate * 365;
-  }
   
   // Tasa de interés por período
   const ratePerPeriod = (annualRate / 100) / periodsPerYear;
@@ -354,8 +369,7 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
   
   return {
     amount: parseFloat(amount),
-    rate: parseFloat(rate),
-    rateType: rateType,
+    rate: parseFloat(annualRate),
     term: parseInt(term),
     frequency: frequency,
     type: type,
@@ -369,39 +383,22 @@ function calculateAmortization(amount, rate, rateType, term, frequency, type, st
 }
 
 // Genera un objeto completo de préstamo asignando ID y Cliente
-function generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate) {
-  const loanDetails = calculateAmortization(amount, rate, rateType, term, frequency, type, startDate);
+function generateLoanObject(clientId, clientName, amount, annualRate, term, frequency, type, startDate) {
+  const loanDetails = calculateAmortization(amount, annualRate, term, frequency, type, startDate);
   const loanId = "loan_" + Math.random().toString(36).substring(2, 9);
   
   return {
     id: loanId,
     clientId: clientId,
     clientName: clientName,
-    rateType: rateType,
     ...loanDetails
-  };
-}
-
-function normalizeLoan(loan) {
-  if (!loan) return loan;
-  return {
-    ...loan,
-    rateType: loan.rateType || loan.ratetype || 'annual'
-  };
-}
-
-function normalizeLoan(loan) {
-  if (!loan) return loan;
-  return {
-    ...loan,
-    rateType: loan.rateType || loan.ratetype || 'annual'
   };
 }
 
 // --- 4. CONTROLADORES Y RUTEADOR ---
 
 // Navegar entre secciones (SPA)
-const navLinks = document.querySelectorAll('.nav-item');
+const navLinks = document.querySelectorAll('.nav-link');
 const sections = document.querySelectorAll('.app-section');
 const sectionTitle = document.getElementById('section-title');
 const sectionSubtitle = document.getElementById('section-subtitle');
@@ -425,7 +422,7 @@ function switchSection(targetSectionId) {
     targetSection.classList.add('active');
   }
   
-  const targetLink = document.querySelector(`.nav-item[data-target="${targetSectionId}"]`);
+  const targetLink = document.querySelector(`.nav-link[data-target="${targetSectionId}"]`);
   if (targetLink) {
     targetLink.classList.add('active');
   }
@@ -435,6 +432,10 @@ function switchSection(targetSectionId) {
   if (meta) {
     sectionTitle.textContent = meta.title;
     sectionSubtitle.textContent = meta.subtitle;
+  }
+  
+  if (targetSectionId === 'settings') {
+    loadUsers();
   }
   
   // Actualizar datos de la sección específica
@@ -458,10 +459,10 @@ navLinks.forEach(link => {
 });
 
 // Registrar eventos de botones rápidos
-const qlb=document.getElementById('quick-loan-btn'); if(qlb) qlb.addEventListener('click', () => {
+document.getElementById('quick-loan-btn').addEventListener('click', () => {
   switchSection('calculator');
 });
-const nlsb=document.getElementById('new-loan-shortcut-btn'); if(nlsb) nlsb.addEventListener('click', () => {
+document.getElementById('new-loan-shortcut-btn').addEventListener('click', () => {
   switchSection('calculator');
 });
 
@@ -780,7 +781,6 @@ calculatorForm.addEventListener('submit', (e) => {
   const clientId = document.getElementById('calc-client').value;
   const amount = parseFloat(document.getElementById('calc-amount').value);
   const rate = parseFloat(document.getElementById('calc-rate').value);
-  const rateType = document.getElementById('calc-rate-type').value;
   const term = parseInt(document.getElementById('calc-term').value);
   const frequency = document.getElementById('calc-frequency').value;
   const type = document.getElementById('calc-type').value;
@@ -793,7 +793,7 @@ calculatorForm.addEventListener('submit', (e) => {
   }
 
   // Generar objeto préstamo temporal
-  calculatedLoanTemp = generateLoanObject(clientId, clientName, amount, rate, rateType, term, frequency, type, startDate);
+  calculatedLoanTemp = generateLoanObject(clientId, clientName, amount, rate, term, frequency, type, startDate);
 
   // Renderizar la tabla de amortización calculada
   renderAmortizationTable(calculatedLoanTemp.instalments);
@@ -801,8 +801,7 @@ calculatorForm.addEventListener('submit', (e) => {
   // Resumen
   const freqName = FREQUENCIES[frequency].name;
   const typeName = type === 'french' ? 'Francés (Cuota Fija)' : 'Simple (Cuota Lineal)';
-  const rateLabel = rateType === 'annual' ? 'anual' : rateType === 'monthly' ? 'mensual' : 'diario';
-  calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% ${rateLabel}</strong>.`;
+  calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% anual</strong>.`;
   calcTotalPayableBadge.textContent = `Total a Pagar: ${formatCurrency(calculatedLoanTemp.totalPayable)}`;
 
   calcResultCard.classList.remove('d-none');
@@ -1042,6 +1041,20 @@ function viewClientDetail(id) {
   document.getElementById('client-detail-debt').style.color = debt > 0 ? 'var(--danger)' : 'var(--success)';
   document.getElementById('client-detail-notes').textContent = client.notes || 'Ninguna nota cargada.';
   
+  const kycBadge = document.getElementById('client-detail-kyc');
+  if (kycBadge) {
+    if (client.kycStatus === 'verified') {
+      kycBadge.innerHTML = '<span class="badge badge-success"><i data-lucide="check-circle" style="width:12px;height:12px;vertical-align:middle;"></i> Verificado</span>';
+    } else {
+      kycBadge.innerHTML = '<span class="badge badge-warning">Pendiente</span>';
+    }
+  }
+  
+  const startKycBtn = document.getElementById('start-kyc-btn');
+  if (startKycBtn) {
+    startKycBtn.onclick = () => openKycModal(client.id);
+  }
+  
   // Renderizar historial de préstamos del cliente
   const clientLoans = state.loans.filter(l => l.clientId === id);
   const listContainer = document.getElementById('client-detail-loans-list');
@@ -1273,19 +1286,32 @@ payCuotaForm.addEventListener('submit', async (e) => {
   
   const loanId = document.getElementById('pay-loan-id').value;
   const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
+  
+  const method = document.getElementById('pay-method-select') ? document.getElementById('pay-method-select').value : 'cash';
   const payAmount = parseFloat(document.getElementById('pay-amount-input').value);
   const payDate = document.getElementById('pay-date-input').value;
   const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
   
+  let paymentData = {
+    loanId,
+    instalmentIdx: cuotaIndex,
+    amount: payAmount,
+    date: payDate,
+    method: method
+  };
+
+  if (method === 'card') {
+    paymentData.card = {
+      number: document.getElementById('pay-card-number').value,
+      exp: document.getElementById('pay-card-exp').value,
+      cvv: document.getElementById('pay-card-cvv').value
+    };
+  }
+
   try {
     await apiRequest('/payments', {
       method: 'POST',
-      body: JSON.stringify({
-        loanId,
-        instalmentIdx: cuotaIndex,
-        amount: payAmount,
-        date: payDate
-      })
+      body: JSON.stringify(paymentData)
     });
     
     if (sendEmail) {
@@ -1351,7 +1377,7 @@ function applyTheme(theme) {
   lucide.createIcons();
 
   // Re-dibujar gráficos si están activos para adaptar colores de fuente
-  const activeLink = document.querySelector('.nav-item.active');
+  const activeLink = document.querySelector('.nav-link.active');
   if (activeLink && activeLink.getAttribute('data-target') === 'dashboard') {
     renderDashboard();
   }
@@ -1362,50 +1388,169 @@ function toggleTheme() {
   applyTheme(newTheme);
 }
 
-themeToggleBtn.addEventListener('click', toggleTheme);
-settingsThemeBtn.addEventListener('click', toggleTheme);
+if (themeToggleBtn) themeToggleBtn.addEventListener('click', toggleTheme);
+if (settingsThemeBtn) settingsThemeBtn.addEventListener('click', toggleTheme);
 
 // Exportar base de datos a JSON
-document.getElementById('settings-export-btn').addEventListener('click', () => {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-  const downloadAnchor = document.createElement('a');
-  const dateStr = new Date().toISOString().split('T')[0];
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `respaldo_prestamos_${dateStr}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
-});
+const settingsExportBtn = document.getElementById('settings-export-btn');
+if (settingsExportBtn) {
+  settingsExportBtn.addEventListener('click', () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `respaldo_prestamos_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  });
+}
 
 // Importar base de datos
 const fileInput = document.getElementById('import-file-input');
-document.getElementById('settings-import-btn').addEventListener('click', () => {
-  fileInput.click();
-});
+const settingsImportBtn = document.getElementById('settings-import-btn');
+if (settingsImportBtn && fileInput) {
+  settingsImportBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+}
 
-fileInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    try {
-      const importedState = JSON.parse(evt.target.result);
-      // Validaciones simples
-      if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
-        state = importedState;
-        saveState();
-        alert("¡Base de datos restaurada correctamente!");
-        refreshAll();
-      } else {
-        alert("El archivo de respaldo no tiene el formato correcto.");
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        const importedState = JSON.parse(evt.target.result);
+        // Validaciones simples
+        if (Array.isArray(importedState.clients) && Array.isArray(importedState.loans)) {
+          state = importedState;
+          saveState();
+          alert("¡Base de datos restaurada correctamente!");
+          fileInput.value = '';
+          refreshAll();
+        } else {
+          alert("El archivo de respaldo no tiene el formato correcto.");
+        }
+      } catch (e) {
+        alert("El archivo no tiene un formato válido.");
       }
-    } catch (err) {
-      alert("Error leyendo el archivo JSON.");
-      console.error(err);
+    };
+    reader.readAsText(file);
+  });
+}
+// --- LÓGICA DE TARJETA ---
+const payMethodSelect = document.getElementById('pay-method-select');
+const payCashFields = document.getElementById('pay-cash-fields');
+const payCardFields = document.getElementById('pay-card-fields');
+
+if (payMethodSelect) {
+  payMethodSelect.addEventListener('change', (e) => {
+    if(e.target.value === 'card') {
+      if(payCashFields) payCashFields.style.display = 'none';
+      if(payCardFields) payCardFields.style.display = 'block';
+    } else {
+      if(payCashFields) payCashFields.style.display = 'block';
+      if(payCardFields) payCardFields.style.display = 'none';
     }
-  };
-  reader.readAsText(file);
+  });
+}
+
+// --- 7. LÓGICA KYC ---
+const kycVideo = document.getElementById('kyc-video');
+const kycCanvas = document.getElementById('kyc-canvas');
+const kycSnapshot = document.getElementById('kyc-snapshot');
+const kycCaptureBtn = document.getElementById('kyc-capture-btn');
+const kycRetakeBtn = document.getElementById('kyc-retake-btn');
+const kycSubmitBtn = document.getElementById('kyc-submit-btn');
+let kycStream = null;
+
+function openKycModal(clientId) {
+  document.getElementById('kyc-client-id').value = clientId;
+  if(kycSnapshot) kycSnapshot.style.display = 'none';
+  if(kycVideo) kycVideo.style.display = 'block';
+  if(kycCaptureBtn) kycCaptureBtn.style.display = 'inline-block';
+  if(kycRetakeBtn) kycRetakeBtn.style.display = 'none';
+  if(kycSubmitBtn) kycSubmitBtn.setAttribute('disabled', 'true');
+  
+  openModal('modal-kyc');
+  startCamera();
+}
+
+async function startCamera() {
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      kycStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if(kycVideo) kycVideo.srcObject = kycStream;
+    } catch (err) {
+      console.error("Error accediendo a cámara: ", err);
+      alert("No se pudo acceder a la cámara.");
+    }
+  }
+}
+
+function stopCamera() {
+  if (kycStream) {
+    kycStream.getTracks().forEach(track => track.stop());
+    kycStream = null;
+  }
+}
+
+if (kycCaptureBtn) {
+  kycCaptureBtn.addEventListener('click', () => {
+    kycCanvas.width = kycVideo.videoWidth;
+    kycCanvas.height = kycVideo.videoHeight;
+    kycCanvas.getContext('2d').drawImage(kycVideo, 0, 0);
+    const dataUrl = kycCanvas.toDataURL('image/jpeg');
+    
+    kycSnapshot.src = dataUrl;
+    kycVideo.style.display = 'none';
+    kycSnapshot.style.display = 'block';
+    
+    kycCaptureBtn.style.display = 'none';
+    kycRetakeBtn.style.display = 'inline-block';
+    kycSubmitBtn.removeAttribute('disabled');
+  });
+}
+
+if (kycRetakeBtn) {
+  kycRetakeBtn.addEventListener('click', () => {
+    kycSnapshot.style.display = 'none';
+    kycVideo.style.display = 'block';
+    kycCaptureBtn.style.display = 'inline-block';
+    kycRetakeBtn.style.display = 'none';
+    kycSubmitBtn.setAttribute('disabled', 'true');
+  });
+}
+
+if (kycSubmitBtn) {
+  kycSubmitBtn.addEventListener('click', async () => {
+    const clientId = document.getElementById('kyc-client-id').value;
+    const client = state.clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    // Simular el guardado de KYC
+    client.kycStatus = 'verified';
+    client.kycPhoto = kycSnapshot.src;
+    saveState();
+    
+    stopCamera();
+    closeModal('modal-kyc');
+    renderClientsTable();
+    viewClientDetail(clientId);
+    alert('Verificación KYC guardada correctamente.');
+  });
+}
+
+// Detener cámara si se cierra modal KYC de otra manera
+document.querySelectorAll('.close-btn, .btn-secondary').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    if (document.getElementById('modal-kyc').classList.contains('active') === false) {
+      stopCamera();
+    }
+  });
 });
 
 // Semilla de prueba
@@ -1536,6 +1681,65 @@ if (emailBackupForm) {
       lucide.createIcons();
     }
   });
+}
+
+// --- GESTIÓN DE USUARIOS ---
+const addUserForm = document.getElementById('add-user-form');
+if (addUserForm) {
+  addUserForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const usernameInput = document.getElementById('new-user-username');
+    const passwordInput = document.getElementById('new-user-password');
+    const msgEl = document.getElementById('add-user-msg');
+    
+    msgEl.textContent = 'Añadiendo...';
+    msgEl.style.color = 'var(--text-muted)';
+    
+    try {
+      await apiRequest('/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: usernameInput.value,
+          password: passwordInput.value
+        })
+      });
+      
+      msgEl.textContent = 'Usuario añadido exitosamente.';
+      msgEl.style.color = 'var(--success)';
+      addUserForm.reset();
+      loadUsers(); // Recargar la lista
+    } catch (err) {
+      msgEl.textContent = err.message || 'Error al añadir usuario.';
+      msgEl.style.color = 'var(--danger)';
+    }
+  });
+}
+
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  
+  try {
+    const users = await apiRequest('/users');
+    tbody.innerHTML = '';
+    
+    if (users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
+      return;
+    }
+    
+    users.forEach(user => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${user.username}</strong></td>
+        <td><span style="font-size: 0.8rem; color: var(--text-muted);">${user.companyId}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Error cargando usuarios:', err);
+    tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
+  }
 }
 
 // --- INSTALACIÓN DE LA PWA ---
@@ -1759,7 +1963,7 @@ if (finForm) {
   });
 }
 // Descargar copia de base de datos local
-document.getElementById('download-backup-btn')?.addEventListener('click', async () => {
+if (document.getElementById('download-backup-btn')) document.getElementById('download-backup-btn').addEventListener('click', async () => {
   const btn = document.getElementById('download-backup-btn');
   const msgEl = document.getElementById('download-backup-msg');
   btn.disabled = true;
@@ -1813,17 +2017,17 @@ function downloadCSV(csvContent, fileName) {
   document.body.removeChild(link);
 }
 
-document.getElementById('export-clients-btn')?.addEventListener('click', () => {
+if (document.getElementById('export-clients-btn')) document.getElementById('export-clients-btn').addEventListener('click', () => {
   if (state.clients.length === 0) return alert('No hay clientes para exportar');
   const headers = "ID,Nombre,Telefono,Email,Notas,FechaCreacion\n";
   const rows = state.clients.map(c => `"${c.id}","${c.name}","${c.phone}","${c.email}","${(c.notes || '').replace(/"/g, '""')}","${c.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'clientes.csv');
 });
 
-document.getElementById('export-loans-btn')?.addEventListener('click', () => {
+if (document.getElementById('export-loans-btn')) document.getElementById('export-loans-btn').addEventListener('click', () => {
   if (state.loans.length === 0) return alert('No hay préstamos para exportar');
-  const headers = "ID,Cliente,Monto,Tasa,TipoTasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
-  const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.rate}","${l.rateType || 'annual'}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
+  const headers = "ID,Cliente,Monto,Tasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
+  const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.annualRate}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
   downloadCSV(headers + rows, 'prestamos.csv');
 });
 
@@ -1993,7 +2197,7 @@ function exportClientsCSV() {
 function exportLoansCSV() {
   const headers = ['ID', 'Cliente', 'Monto Original', 'Tasa (%)', 'Frecuencia', 'Total a Pagar', 'Deuda Restante', 'Estado', 'Fecha Creación'];
   const rows = state.loans.map(l => [
-    l.id, l.clientName, l.amount, l.rate, FREQUENCIES[l.frequency]?.name || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+    l.id, l.clientName, l.amount, l.rate, (FREQUENCIES[l.frequency] ? FREQUENCIES[l.frequency].name : null) || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
   ]);
   
   let csvContent = headers.join(',') + '\n';
@@ -2004,224 +2208,3 @@ function exportLoansCSV() {
   downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
 }
 
-// --- LOGICA DE KYC Y PAGOS DIGITALES AÑADIDA ---
-// Cambio de Metodo de Pago
-const payMethodSelect = document.getElementById('pay-method-select');
-const payCashFields = document.getElementById('pay-cash-fields');
-const payCardFields = document.getElementById('pay-card-fields');
-if (payMethodSelect) {
-  payMethodSelect.addEventListener('change', (e) => {
-    if(e.target.value === 'card') {
-      payCashFields.style.display = 'none';
-      payCardFields.style.display = 'block';
-    } else {
-      payCashFields.style.display = 'block';
-      payCardFields.style.display = 'none';
-    }
-  });
-}
-
-// Sobrescribir submit de pago para integrar tarjeta
-if (payCuotaForm) {
-  // Remover el listener anterior que interceptaba todo
-  const newPayForm = payCuotaForm.cloneNode(true);
-  payCuotaForm.parentNode.replaceChild(newPayForm, payCuotaForm);
-  
-  newPayForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const loanId = document.getElementById('pay-loan-id').value;
-    const cuotaIndex = parseInt(document.getElementById('pay-cuota-index').value);
-    const payAmount = parseFloat(document.getElementById('pay-amount-input').value) || parseFloat(document.getElementById('pay-suggested-amount').textContent.replace(/[^0-9.-]+/g,""));
-    const method = document.getElementById('pay-method-select').value;
-    const sendEmail = document.getElementById('pay-send-email-checkbox').checked;
-    
-    const submitBtn = document.getElementById('pay-submit-btn');
-    if(submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Procesando...'; }
-    
-    try {
-      if (method === 'card') {
-        const cardNumber = document.getElementById('pay-card-number').value;
-        const cardExp = document.getElementById('pay-card-exp').value;
-        const cardCvv = document.getElementById('pay-card-cvv').value;
-        
-        if(!cardNumber || !cardExp || !cardCvv) throw new Error("Complete los datos de la tarjeta");
-        
-        // Llamada a pasarela de pagos simulada
-        await apiRequest('/payments/checkout', {
-          method: 'POST',
-          body: JSON.stringify({
-            loanId, instalmentIdx: cuotaIndex, amount: payAmount,
-            cardData: { number: cardNumber, exp: cardExp, cvv: cardCvv }
-          })
-        });
-      } else {
-        const payDate = document.getElementById('pay-date-input').value;
-        await apiRequest('/payments', {
-          method: 'POST',
-          body: JSON.stringify({ loanId, instalmentIdx: cuotaIndex, amount: payAmount, date: payDate })
-        });
-      }
-      
-      alert("Pago registrado exitosamente.");
-      closeModal('modal-pay-cuota');
-      await loadData();
-      viewLoanDetail(loanId);
-    } catch (error) {
-      alert("Error al procesar pago: " + error.message);
-    } finally {
-      if(submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Registrar Pago'; }
-    }
-  });
-}
-
-// Biometria (Cámara)
-const kycVideo = document.getElementById('kyc-video');
-const kycCanvas = document.getElementById('kyc-canvas');
-const kycSnapshot = document.getElementById('kyc-snapshot');
-const kycCaptureBtn = document.getElementById('kyc-capture-btn');
-const kycRetakeBtn = document.getElementById('kyc-retake-btn');
-const kycSubmitBtn = document.getElementById('kyc-submit-btn');
-
-let currentKycBlob = null;
-let currentClientId = null; // Guardará el cliente actual
-
-// Interceptar vista detalle para setear currentClientId y ver el KYC
-const originalViewClientDetail = viewClientDetail;
-viewClientDetail = function(id) {
-  originalViewClientDetail(id);
-  currentClientId = id;
-  const client = state.clients.find(c => c.id === id);
-  if (client) {
-    const kycSpan = document.getElementById('client-detail-kyc');
-    if (client.kycStatus === 'verified') {
-      kycSpan.innerHTML = '<span class="badge badge-success"><i data-lucide="check-circle" style="width:12px; height:12px"></i> Verificado</span>';
-    } else {
-      kycSpan.innerHTML = '<span class="badge badge-warning">Pendiente</span>';
-    }
-  }
-};
-
-const originalRenderClientsTable = renderClientsTable;
-renderClientsTable = function() {
-  originalRenderClientsTable();
-  const rows = document.querySelectorAll('#clients-table-body tr');
-  const filtered = state.clients.filter(client => 
-    client.name.toLowerCase().includes(clientSearch.value.toLowerCase().trim()) || 
-    client.phone.includes(clientSearch.value.trim()) ||
-    client.email.toLowerCase().includes(clientSearch.value.toLowerCase().trim())
-  );
-  
-  rows.forEach((row, i) => {
-    if(filtered[i]) {
-      const kycStatus = filtered[i].kycStatus === 'verified' ? '<span class="badge badge-success">Verificado</span>' : '<span class="badge badge-warning">Pendiente</span>';
-      // Inyectar antes de "Préstamos Totales"
-      // La celda de estado KYC es la 4ta (índice 3) si contamos Nombre, Telefono, Correo, Estado KYC
-      const cell = document.createElement('td');
-      cell.innerHTML = kycStatus;
-      row.insertBefore(cell, row.children[3]);
-    }
-  });
-};
-
-if (document.getElementById('start-kyc-btn')) {
-  // Si hay varios, mejor delegar
-  document.body.addEventListener('click', async (e) => {
-    const btn = e.target.closest('#start-kyc-btn');
-    if(btn) {
-      if(!currentClientId) return;
-      document.getElementById('kyc-client-id').value = currentClientId;
-      
-      kycSnapshot.style.display = 'none';
-      kycVideo.style.display = 'block';
-      kycRetakeBtn.style.display = 'none';
-      kycCaptureBtn.style.display = 'block';
-      kycSubmitBtn.disabled = true;
-      currentKycBlob = null;
-      document.getElementById('kyc-document-file').value = "";
-      
-      openModal('modal-kyc');
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        window.stream = stream;
-        kycVideo.srcObject = stream;
-      } catch(err) {
-        alert("Error accediendo a la cámara: " + err.message);
-      }
-    }
-  });
-}
-
-if (kycCaptureBtn) {
-  kycCaptureBtn.addEventListener('click', () => {
-    const context = kycCanvas.getContext('2d');
-    kycCanvas.width = kycVideo.videoWidth;
-    kycCanvas.height = kycVideo.videoHeight;
-    context.drawImage(kycVideo, 0, 0, kycCanvas.width, kycCanvas.height);
-    
-    kycCanvas.toBlob((blob) => {
-      currentKycBlob = blob;
-      kycSnapshot.src = URL.createObjectURL(blob);
-      kycSnapshot.style.display = 'block';
-      kycVideo.style.display = 'none';
-      
-      kycCaptureBtn.style.display = 'none';
-      kycRetakeBtn.style.display = 'block';
-      kycSubmitBtn.disabled = false;
-    }, 'image/jpeg');
-  });
-}
-
-if (kycRetakeBtn) {
-  kycRetakeBtn.addEventListener('click', () => {
-    kycSnapshot.style.display = 'none';
-    kycVideo.style.display = 'block';
-    kycCaptureBtn.style.display = 'block';
-    kycRetakeBtn.style.display = 'none';
-    kycSubmitBtn.disabled = true;
-    currentKycBlob = null;
-  });
-}
-
-if (kycSubmitBtn) {
-  kycSubmitBtn.addEventListener('click', async () => {
-    const clientId = document.getElementById('kyc-client-id').value;
-    const formData = new FormData();
-    if(currentKycBlob) formData.append('selfie', currentKycBlob, 'selfie.jpg');
-    
-    const docFile = document.getElementById('kyc-document-file').files[0];
-    if(docFile) formData.append('idDocument', docFile);
-    
-    kycSubmitBtn.disabled = true;
-    kycSubmitBtn.innerHTML = '<i data-lucide="loader" class="spin"></i> Subiendo...';
-    lucide.createIcons();
-    
-    try {
-      const token = getAuthToken();
-      const headers = token ? { 'X-Auth-Token': token } : {};
-      
-      const res = await fetch(`${API_URL}/clients/${clientId}/kyc`, {
-        method: 'POST',
-        headers: headers,
-        body: formData
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || "Error subiendo KYC");
-      
-      alert("Identidad verificada exitosamente.");
-      
-      if(window.stream) window.stream.getTracks().forEach(t=>t.stop());
-      closeModal('modal-kyc');
-      
-      await loadData();
-      viewClientDetail(clientId);
-    } catch(e) {
-      alert(e.message);
-    } finally {
-      kycSubmitBtn.disabled = false;
-      kycSubmitBtn.innerHTML = '<i data-lucide="shield-check"></i> Verificar Cliente';
-      lucide.createIcons();
-    }
-  });
-}

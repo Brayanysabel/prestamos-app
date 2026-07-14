@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test de Conexion</title>
+<style>
+body { font-family: Arial; padding: 20px; background: #111; color: #eee; }
+.ok { color: #0f0; font-weight: bold; }
+.fail { color: #f00; font-weight: bold; }
+#log { white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.8; }
+</style>
+</head>
+<body>
+<h2>Diagnostico de PrestamosApp</h2>
+<div id="log">Ejecutando pruebas...</div>
+<script>
+var log = document.getElementById('log');
+function addLog(msg, ok) {
+  var span = document.createElement('span');
+  span.className = ok ? 'ok' : 'fail';
+  span.textContent = (ok ? '✅ ' : '❌ ') + msg + '\n';
+  log.appendChild(span);
+}
+
+async function runTests() {
+  log.textContent = '';
+  
+  // Test 1: Local API
+  addLog('Test 1: Probando servidor LOCAL (localhost:8080/api/health)...', true);
+  try {
+    var r1 = await fetch('http://localhost:8080/api/health');
+    var d1 = await r1.text();
+    addLog('Servidor local responde: ' + r1.status + ' - ' + d1, r1.ok);
+  } catch(e) {
+    addLog('Servidor local NO responde: ' + e.message, false);
+  }
+
+  // Test 2: Railway API  
+  addLog('Test 2: Probando servidor RAILWAY (nube)...', true);
+  try {
+    var r2 = await fetch('https://prestamos-backend-production-1c7d.up.railway.app/api/health');
+    var d2 = await r2.text();
+    addLog('Railway responde: ' + r2.status + ' - ' + d2, r2.ok);
+  } catch(e) {
+    addLog('Railway NO responde: ' + e.message, false);
+  }
+
+  // Test 3: Login local
+  addLog('Test 3: Probando LOGIN en servidor LOCAL...', true);
+  try {
+    var r3 = await fetch('http://localhost:8080/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' })
+    });
+    var d3 = await r3.json();
+    addLog('Login local: ' + r3.status + ' - token: ' + (d3.token ? 'SI' : 'NO') + ' - user: ' + (d3.username || d3.error), r3.ok);
+  } catch(e) {
+    addLog('Login local FALLO: ' + e.message, false);
+  }
+
+  // Test 4: Login Railway
+  addLog('Test 4: Probando LOGIN en RAILWAY...', true);
+  try {
+    var r4 = await fetch('https://prestamos-backend-production-1c7d.up.railway.app/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' })
+    });
+    var d4 = await r4.json();
+    addLog('Login Railway: ' + r4.status + ' - token: ' + (d4.token ? 'SI' : 'NO') + ' - user: ' + (d4.username || d4.error), r4.ok);
+  } catch(e) {
+    addLog('Login Railway FALLO: ' + e.message, false);
+  }
+
+  // Test 5: Que URL usa la app
+  addLog('Test 5: URL configurada en la app: ' + (window.PRESTAMOS_API_URL || 'NO DEFINIDA (usara localhost)'), true);
+  
+  // Test 6: Service Worker
+  if ('serviceWorker' in navigator) {
+    var regs = await navigator.serviceWorker.getRegistrations();
+    addLog('Test 6: Service Workers activos: ' + regs.length, true);
+  }
+
+  addLog('\n=== DIAGNOSTICO COMPLETO ===', true);
+}
+
+runTests();
+</script>
+</body>
+</html>
