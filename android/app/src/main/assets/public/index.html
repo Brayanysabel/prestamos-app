@@ -102,6 +102,13 @@
             <span>Mi Plan</span>
           </a>
         </li>
+        <!-- SUPER ADMIN MENU -->
+        <li id="nav-superadmin" style="display: none;">
+          <a class="nav-link" data-target="superadmin" style="color: var(--warning);">
+            <i data-lucide="shield"></i>
+            <span>Global Admin</span>
+          </a>
+        </li>
         <li style="margin-top: 1rem;">
           <button id="install-app-btn" class="btn btn-primary" style="width: 100%; display: none; padding: 0.5rem;">
             <i data-lucide="download"></i> Instalar App
@@ -645,6 +652,59 @@
         <h3 class="mb-4">Planes Disponibles</h3>
         <div class="plans-grid" id="plans-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
           <!-- Se llenan con JS -->
+        </div>
+      </section>
+
+      <!-- 8. SECCIÓN SUPER ADMIN -->
+      <section id="section-superadmin" class="content-section d-none">
+        <div class="card mb-4" style="border: 2px solid var(--warning);">
+          <div class="card-header" style="background-color: rgba(245, 158, 11, 0.1);">
+            <h2 class="card-title" style="color: var(--warning);">
+              <i data-lucide="shield" style="margin-right: 0.5rem;"></i>
+              Gestión de Prestamistas (Inquilinos)
+            </h2>
+          </div>
+          <div class="card-body" style="overflow-x: auto;">
+            <table class="table" style="min-width: 800px;">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Estado</th>
+                  <th>Plan Actual</th>
+                  <th>Válido Hasta</th>
+                  <th>Uso Actual</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="saas-companies-tbody">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h2 class="card-title">Planes de Suscripción (SaaS)</h2>
+            <button class="btn btn-primary btn-sm" onclick="alert('Función de crear plan próximamente')">
+              <i data-lucide="plus"></i> Crear Plan
+            </button>
+          </div>
+          <div class="card-body" style="overflow-x: auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Nombre del Plan</th>
+                  <th>Precio Mensual</th>
+                  <th>Límite de Préstamos</th>
+                  <th>Límite de Usuarios</th>
+                </tr>
+              </thead>
+              <tbody id="saas-plans-tbody">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
       

@@ -67,10 +67,20 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 async function loadData() {
-  if (!getAuthToken()) {
+  const token = getAuthToken();
+  if (!token) {
     showLogin();
     return;
   }
+  
+  // Mostrar u ocultar menú super admin
+  const isSuperAdmin = localStorage.getItem('prestamos_is_superadmin') === 'true';
+  const adminNav = document.getElementById('nav-superadmin');
+  if (adminNav) {
+    adminNav.style.display = isSuperAdmin ? 'flex' : 'none';
+  }
+
+  showApp();
   try {
     const [clients, loans] = await Promise.all([
       apiRequest('/clients'),
@@ -86,17 +96,19 @@ async function loadData() {
       });
     });
     
-    const loginScreen = document.getElementById('login-screen');
-    if (loginScreen) loginScreen.classList.remove('active');
-    
-    let appWrapper = document.getElementById('app-wrapper');
-    if (!appWrapper) appWrapper = document.getElementById('main-app');
-    if (appWrapper) appWrapper.classList.remove('d-none');
-    
     refreshAll();
   } catch (e) {
     console.error('Error cargando datos', e);
   }
+}
+
+function showApp() {
+  const loginScreen = document.getElementById('login-screen');
+  if (loginScreen) loginScreen.classList.remove('active');
+  
+  let appWrapper = document.getElementById('app-wrapper');
+  if (!appWrapper) appWrapper = document.getElementById('main-app');
+  if (appWrapper) appWrapper.classList.remove('d-none');
 }
 
 function showLogin() {
@@ -127,6 +139,11 @@ if (loginForm) {
       if (!res.ok) throw new Error(data.error || 'Error de autenticación');
       
       localStorage.setItem('prestamos_auth_token', data.token);
+      if (data.isSuperAdmin) {
+        localStorage.setItem('prestamos_is_superadmin', 'true');
+      } else {
+        localStorage.removeItem('prestamos_is_superadmin');
+      }
       errorEl.classList.add('d-none');
       loadData();
     } catch (err) {
@@ -413,12 +430,13 @@ const sectionTitle = document.getElementById('section-title');
 const sectionSubtitle = document.getElementById('section-subtitle');
 
 const sectionMeta = {
-  dashboard: { title: 'Dashboard', subtitle: 'Vista general del estado de tus préstamos.' },
-  calculator: { title: 'Calculadora de Préstamos', subtitle: 'Simula créditos y proyecta tablas de amortización.' },
-  clients: { title: 'Gestión de Clientes', subtitle: 'Directorio de clientes y balances individuales.' },
-  loans: { title: 'Préstamos Otorgados', subtitle: 'Control de amortizaciones y cobros de cuotas.' },
-  settings: { title: 'Ajustes del Sistema', subtitle: 'Gestión de la base de datos y preferencias visuales.' },
-  plans: { title: 'Mi Plan', subtitle: 'Gestiona tu suscripción y límites' }
+    'dashboard': { title: 'Dashboard', subtitle: 'Resumen general de préstamos' },
+    'clients': { title: 'Gestión de Clientes', subtitle: 'Administra tus clientes y su información' },
+    'loans': { title: 'Gestión de Préstamos', subtitle: 'Administra los préstamos activos e históricos' },
+    'calculator': { title: 'Calculadora de Préstamos', subtitle: 'Simula y genera nuevos préstamos' },
+    'settings': { title: 'Configuración', subtitle: 'Ajustes del sistema y usuarios' },
+    'plans': { title: 'Mi Plan', subtitle: 'Gestiona tu suscripción y límites' },
+    'superadmin': { title: 'Administración Global', subtitle: 'Gestión SaaS de inquilinos y planes' }
 };
 
 function switchSection(targetSectionId) {
@@ -459,6 +477,8 @@ function switchSection(targetSectionId) {
     populateClientSelect();
   } else if (targetSectionId === 'plans') {
     renderPlansSection();
+  } else if (targetSectionId === 'superadmin') {
+    renderSuperAdminSection();
   }
 }
 
@@ -2314,5 +2334,97 @@ async function renderPlansSection() {
   } catch (err) {
     console.error('Error cargando planes:', err);
   }
+
+// --- LOGICA SUPER ADMIN ---
+async function renderSuperAdminSection() {
+  try {
+    const [companies, plans] = await Promise.all([
+      apiRequest('/saas/companies'),
+      apiRequest('/saas/public-plans')
+    ]);
+    
+    // Render companies
+    const tbody = document.getElementById('saas-companies-tbody');
+    tbody.innerHTML = '';
+    companies.forEach(comp => {
+      const isDefault = comp.id === 'comp_default';
+      const tr = document.createElement('tr');
+      
+      let planOptions = plans.map(p => `<option value="${p.id}" ${comp.plan === p.id ? 'selected' : ''}>${p.name}</option>`).join('');
+      
+      tr.innerHTML = `
+        <td><strong>${comp.name}</strong><br><small class="text-muted">ID: ${comp.id}</small></td>
+        <td>
+          <span class="badge ${comp.status === 'active' ? 'badge-success' : 'badge-danger'}">
+            ${comp.status === 'active' ? 'Activo' : 'Suspendido'}
+          </span>
+        </td>
+        <td>
+          <select class="form-select form-select-sm" onchange="changeCompanyPlan('${comp.id}', this.value)" ${isDefault ? 'disabled' : ''}>
+            ${planOptions}
+          </select>
+        </td>
+        <td>${comp.validUntil || '-'}</td>
+        <td>
+          <div style="display:flex; gap:0.5rem; flex-direction:column; font-size:0.85rem;">
+            <span><i data-lucide="users" style="width:14px; height:14px"></i> Clientes: ${comp.clientCount}</span>
+            <span><i data-lucide="hand-coins" style="width:14px; height:14px"></i> Préstamos: ${comp.loanCount}</span>
+          </div>
+        </td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-secondary" onclick="toggleCompanyStatus('${comp.id}', '${comp.status}')" ${isDefault ? 'disabled' : ''}>
+            ${comp.status === 'active' ? 'Suspender' : 'Activar'}
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // Render plans
+    const ptbody = document.getElementById('saas-plans-tbody');
+    ptbody.innerHTML = '';
+    plans.forEach(plan => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${plan.name}</strong></td>
+        <td>$${plan.price}</td>
+        <td>${plan.max_loans}</td>
+        <td>${plan.max_users}</td>
+      `;
+      ptbody.appendChild(tr);
+    });
+    
+    lucide.createIcons();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+window.changeCompanyPlan = async function(companyId, newPlan) {
+  if (!confirm('¿Cambiar el plan de esta empresa?')) return;
+  try {
+    await apiRequest(`/saas/companies/${companyId}/plan`, {
+      method: 'PUT',
+      body: JSON.stringify({ plan: newPlan })
+    });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
+
+window.toggleCompanyStatus = async function(companyId, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
+  if (!confirm(`¿Desea ${newStatus === 'active' ? 'ACTIVAR' : 'SUSPENDER'} esta empresa?`)) return;
+  try {
+    await apiRequest(`/saas/companies/${companyId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: newStatus })
+    });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
 }
 
