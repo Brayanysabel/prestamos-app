@@ -58,7 +58,12 @@ async function apiRequest(endpoint, options = {}) {
     showLogin();
     throw new Error('No autorizado');
   }
-  return response.json();
+  
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Error en la solicitud');
+  }
+  return data;
 }
 
 async function loadData() {
