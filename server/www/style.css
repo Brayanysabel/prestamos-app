@@ -640,6 +640,7 @@ tr:hover td {
     overflow-y: hidden;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    white-space: nowrap;
   }
   .nav-menu::-webkit-scrollbar {
     display: none;
@@ -656,6 +657,7 @@ tr:hover td {
     min-width: 75px;
     justify-content: center;
     text-align: center;
+    white-space: nowrap;
   }
   
   .sidebar-footer {
