@@ -2839,16 +2839,19 @@ window.deletePlan = async function(id) {
 };
 
 // --- MOBILE MENU LOGIC ---
-document.addEventListener('DOMContentLoaded', () => {
-  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+window.toggleMobileMenu = function(e) {
+  if (e) e.stopPropagation();
   const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    sidebar.classList.toggle('open');
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const sidebar = document.getElementById('sidebar');
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
   
-  if (mobileMenuBtn && sidebar) {
-    mobileMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      sidebar.classList.toggle('open');
-    });
-    
+  if (sidebar) {
     // Cerrar al hacer clic en un enlace
     const navLinks = sidebar.querySelectorAll('.nav-link');
     navLinks.forEach(link => {
@@ -2861,7 +2864,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Cerrar al hacer clic fuera
     document.addEventListener('click', (e) => {
-      if (window.innerWidth <= 768 && sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target !== mobileMenuBtn) {
+      if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+        // Si el clic es dentro del sidebar o es en el boton de menu, no cerramos
+        if (sidebar.contains(e.target)) return;
+        if (mobileMenuBtn && mobileMenuBtn.contains(e.target)) return;
+        
         sidebar.classList.remove('open');
       }
     });
