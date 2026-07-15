@@ -1906,38 +1906,18 @@ if (installAppBtn) {
 //   console.log('PWA was installed');
 // });
 
-// --- ELIMINACIÓN SEGURA ---
-const deleteLoanBtn = document.getElementById('delete-loan-btn');
-const deleteClientBtn = document.getElementById('delete-client-btn');
-const modalDeleteAuth = document.getElementById('modal-delete-auth');
+window.promptDeleteAuth = function(targetId, targetType) {
+  document.getElementById('delete-target-id').value = targetId;
+  document.getElementById('delete-target-type').value = targetType;
+  if (targetType === 'client') {
+    document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente a este cliente, TODOS SUS PRÉSTAMOS y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
+  } else {
+    document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente este préstamo y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
+  }
+  openModal('modal-delete-auth');
+};
+
 const deleteAuthForm = document.getElementById('delete-auth-form');
-
-if (deleteLoanBtn) {
-  deleteLoanBtn.addEventListener('click', () => {
-    const loanId = document.getElementById('loan-detail-id').textContent;
-    if (loanId && loanId !== '-') {
-      document.getElementById('delete-target-id').value = loanId;
-      document.getElementById('delete-target-type').value = 'loan';
-      document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente este préstamo y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
-      openModal('modal-delete-auth');
-    }
-  });
-}
-
-if (deleteClientBtn) {
-  deleteClientBtn.addEventListener('click', () => {
-    // Tomamos el ID del cliente de algún lugar, aunque modal-client-detail no muestra el ID directamente.
-    // Vamos a usar client-detail-email o pasar el ID a un campo oculto al abrir el modal.
-    // Wait, let's check how the client modal is populated. It sets `currentClientId = client.id` when opened.
-    // So we can rely on `currentClientId` global variable!
-    if (currentClientId) {
-      document.getElementById('delete-target-id').value = currentClientId;
-      document.getElementById('delete-target-type').value = 'client';
-      document.getElementById('delete-auth-warning-text').textContent = 'Esta acción borrará permanentemente a este cliente, TODOS SUS PRÉSTAMOS y todos sus pagos asociados. Ingrese su contraseña de administrador para confirmar.';
-      openModal('modal-delete-auth');
-    }
-  });
-}
 
 if (deleteAuthForm) {
   deleteAuthForm.addEventListener('submit', async (e) => {

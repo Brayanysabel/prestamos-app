@@ -858,7 +858,7 @@
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-        <button type="button" class="btn btn-danger" id="delete-client-btn">
+        <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(currentClientId, 'client')">
           <i data-lucide="trash-2"></i> Eliminar
         </button>
         <div style="display: flex; gap: 0.5rem;">
@@ -948,7 +948,7 @@
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: space-between;">
-        <button type="button" class="btn btn-danger" id="delete-loan-btn">
+        <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(document.getElementById('loan-detail-id').textContent, 'loan')">
           <i data-lucide="trash-2"></i> Eliminar Préstamo
         </button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
@@ -1143,7 +1143,7 @@
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: space-between;">
-        <button type="button" class="btn btn-danger" id="delete-loan-btn">
+        <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(document.getElementById('loan-detail-id').textContent, 'loan')">
           <i data-lucide="trash-2"></i> Eliminar Préstamo
         </button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
