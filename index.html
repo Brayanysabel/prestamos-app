@@ -96,6 +96,19 @@
             <span>Configuración</span>
           </a>
         </li>
+        <li>
+          <a class="nav-link" data-target="plans">
+            <i data-lucide="star"></i>
+            <span>Mi Plan</span>
+          </a>
+        </li>
+        <!-- SUPER ADMIN MENU -->
+        <li id="nav-superadmin" style="display: none;">
+          <a class="nav-link" data-target="superadmin" style="color: var(--warning);">
+            <i data-lucide="shield"></i>
+            <span>Global Admin</span>
+          </a>
+        </li>
         <li style="margin-top: 1rem;">
           <button id="install-app-btn" class="btn btn-primary" style="width: 100%; display: none; padding: 0.5rem;">
             <i data-lucide="download"></i> Instalar App
@@ -610,6 +623,89 @@
             <button id="settings-clear-btn" class="btn btn-danger">
               <i data-lucide="trash-2"></i> Borrar Todo
             </button>
+          </div>
+        </div>
+      </section>
+        <!-- 7. SECCIÓN MI PLAN -->
+      <section id="sec-plans" class="app-section">
+        <div class="card mb-4" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white;">
+          <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+            <h2 class="card-title" style="color: white;">Suscripción Actual</h2>
+          </div>
+          <div class="card-body">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+              <div>
+                <p style="margin-bottom: 0.5rem; opacity: 0.9;">Plan Activo</p>
+                <h3 id="current-plan-name" style="font-size: 2rem; margin: 0; text-transform: capitalize;">-</h3>
+                <p id="current-plan-status" style="margin: 0.5rem 0 0; opacity: 0.85;"></p>
+              </div>
+              <div style="text-align: right;">
+                <p style="margin-bottom: 0.5rem; opacity: 0.9;">Uso de Préstamos</p>
+                <h3 style="margin: 0;"><span id="current-plan-usage">0</span> / <span id="current-plan-max">0</span></h3>
+                <p id="current-plan-dates" style="margin: 0.5rem 0 0; opacity: 0.85; font-size: 0.9rem;"></p>
+              </div>
+            </div>
+            <div style="margin-top: 1.5rem; background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
+              <div id="current-plan-progress" style="background: white; width: 0%; height: 100%; border-radius: 4px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="mb-4">Planes Disponibles</h3>
+        <div class="plans-grid" id="plans-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+          <!-- Se llenan con JS -->
+        </div>
+      </section>
+
+      <!-- 8. SECCIÓN SUPER ADMIN -->
+      <section id="sec-superadmin" class="app-section">
+        <div class="card mb-4" style="border: 2px solid var(--warning);">
+          <div class="card-header" style="background-color: rgba(245, 158, 11, 0.1);">
+            <h2 class="card-title" style="color: var(--warning);">
+              <i data-lucide="shield" style="margin-right: 0.5rem;"></i>
+              Gestión de Prestamistas (Inquilinos)
+            </h2>
+          </div>
+          <div class="card-body" style="overflow-x: auto;">
+            <table class="table" style="min-width: 800px;">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Estado</th>
+                  <th>Plan Actual</th>
+                  <th>Válido Hasta</th>
+                  <th>Uso Actual</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="saas-companies-tbody">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h2 class="card-title">Planes de Suscripción (SaaS)</h2>
+            <button class="btn btn-primary btn-sm" onclick="openPlanModal()">
+              <i data-lucide="plus"></i> Crear Plan
+            </button>
+          </div>
+          <div class="card-body" style="overflow-x: auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Nombre del Plan</th>
+                  <th>Precio Mensual</th>
+                  <th>Límite de Préstamos</th>
+                  <th>Límite de Usuarios</th>
+                </tr>
+              </thead>
+              <tbody id="saas-plans-tbody">
+                <!-- Se llena con JS -->
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -1156,10 +1252,13 @@
 
   <!-- CONFIGURACION PARA PLAY STORE / NUBE -->
   <script>
-    window.PRESTAMOS_API_URL = 'https://prestamos-backend-production-1c7d.up.railway.app/api';
+    // En el celular (APK/Capacitor) usa Railway. En la PC usa el servidor local.
+    if (window.Capacitor) {
+      window.PRESTAMOS_API_URL = 'https://prestamos-backend-production-1c7d.up.railway.app/api';
+    }
   </script>
   
-  <script src="app.js"></script>
+  <script src="app.js?v=14"></script>
 
   <!-- Limpiar Service Workers y caches viejos -->
   <script>
@@ -1178,5 +1277,41 @@
       }
     }
   </script>
+  <!-- Modal para Crear/Editar Plan SaaS -->
+  <div class="modal-overlay" id="plan-modal" style="display: none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="plan-modal-title">Crear Plan SaaS</h3>
+        <button class="btn-icon" onclick="closePlanModal()"><i data-lucide="x"></i></button>
+      </div>
+      <form id="plan-form">
+        <input type="hidden" id="plan-id">
+        <div class="form-group">
+          <label>ID del Plan (ej: basico, premium)</label>
+          <input type="text" id="plan-id-input" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Nombre del Plan</label>
+          <input type="text" id="plan-name" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Precio Mensual ($)</label>
+          <input type="number" id="plan-price" class="form-control" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label>Límite de Préstamos</label>
+          <input type="number" id="plan-max-loans" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label>Límite de Usuarios</label>
+          <input type="number" id="plan-max-users" class="form-control" required>
+        </div>
+        <div class="modal-footer" style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="closePlanModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </body>
 </html>

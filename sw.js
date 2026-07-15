@@ -1,12 +1,12 @@
-const CACHE_NAME = 'prestamos-app-v1';
+const CACHE_NAME = 'prestamos-app-v9';
 const ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
   '/manifest.json',
-  '/icon-192.svg',
-  '/icon-512.svg',
+  '/icon-192.png',
+  '/icon-512.png',
   'https://unpkg.com/lucide@latest'
 ];
 

@@ -67,7 +67,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
 // Token auth middleware
 const authenticateToken = (req, res, next) => {
-  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health'];
+  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health', '/saas/public-plans'];
+  // Permitir activación de plan sin JWT (ruta empieza con /activate)
+  if (req.path.startsWith('/activate/')) return next();
   if (publicRoutes.includes(req.path) || req.method === 'OPTIONS') {
     return next();
   }
@@ -235,7 +237,7 @@ db.exec(initSql, async err => {
             // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
             const tablesToMigrate = ['users', 'clients', 'loans', 'instalments', 'payments', 'settings'];
             tablesToMigrate.forEach(table => {
-              db.run(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS companyId TEXT`, () => {
+              db.run(`ALTER TABLE ${table} ADD COLUMN companyId TEXT`, () => {
                 db.run(`UPDATE ${table} SET companyId = ? WHERE companyId IS NULL`, [defaultCompanyId], function(err) {
                   if (!err && this.changes > 0) {
                     console.log(`Migrated ${this.changes} legacy records in ${table} to default company.`);
@@ -245,23 +247,28 @@ db.exec(initSql, async err => {
             });
             
             // Añadir resetToken
-            db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetToken TEXT", () => {});
-            db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS resetTokenExpires TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN resetToken TEXT", () => {});
+            db.run("ALTER TABLE users ADD COLUMN resetTokenExpires TEXT", () => {});
             
             // Añadir columnas KYC
-            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS kycStatus TEXT DEFAULT 'pending'", () => {});
-            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS idDocumentUrl TEXT", () => {});
-            db.run("ALTER TABLE clients ADD COLUMN IF NOT EXISTS selfieUrl TEXT", () => {});
+            db.run("ALTER TABLE clients ADD COLUMN kycStatus TEXT DEFAULT 'pending'", () => {});
+            db.run("ALTER TABLE clients ADD COLUMN idDocumentUrl TEXT", () => {});
+            db.run("ALTER TABLE clients ADD COLUMN selfieUrl TEXT", () => {});
             
             // Añadir rateType a loans
-            db.run("ALTER TABLE loans ADD COLUMN IF NOT EXISTS rateType TEXT DEFAULT 'annual'", () => {});
+            db.run("ALTER TABLE loans ADD COLUMN rateType TEXT DEFAULT 'annual'", () => {});
             
             // Añadir validUntil a companies
-            db.run("ALTER TABLE companies ADD COLUMN IF NOT EXISTS validUntil TEXT", () => {
+            db.run("ALTER TABLE companies ADD COLUMN validUntil TEXT", () => {
               // Update existing companies to have 30 days valid from today
               const defaultValid = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
               db.run("UPDATE companies SET validUntil = ? WHERE validUntil IS NULL", [defaultValid]);
             });
+
+            // Añadir columnas de activación de plan a companies
+            db.run("ALTER TABLE companies ADD COLUMN activation_token TEXT", () => {});
+            db.run("ALTER TABLE companies ADD COLUMN activation_expires TEXT", () => {});
+            db.run("ALTER TABLE companies ADD COLUMN pending_plan TEXT", () => {});
           }
         );
 
@@ -286,6 +293,89 @@ function generateId(prefix) {
 // Health check endpoint (public, bypasses JWT verification thanks to publicRoutes array)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// --- Activación de Planes por Link del Administrador ---
+const crypto = require('crypto');
+
+// Super Admin genera un link de activación para una empresa con un plan específico
+app.post('/api/saas/companies/:id/generate-activation', requireSuperAdmin, (req, res) => {
+  const targetCompanyId = req.params.id;
+  const { planId } = req.body;
+  if (!planId) return res.status(400).json({ error: 'Se requiere un planId' });
+
+  db.get('SELECT * FROM saas_plans WHERE id = ?', [planId], (err, planRow) => {
+    if (err || !planRow) return res.status(400).json({ error: 'Plan no encontrado' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+    db.run(
+      'UPDATE companies SET activation_token = ?, activation_expires = ?, pending_plan = ? WHERE id = ?',
+      [token, expires, planId, targetCompanyId],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        const link = `${req.protocol}://${req.get('host')}/activate.html?token=${token}`;
+        res.json({ 
+          message: 'Link de activación generado exitosamente',
+          link,
+          plan: planRow.name,
+          expiresIn: '48 horas'
+        });
+      }
+    );
+  });
+});
+
+// Endpoint público: Activar plan mediante token
+app.get('/api/activate/:token', (req, res) => {
+  const token = req.params.token;
+  const now = new Date().toISOString();
+
+  db.get(
+    'SELECT id, pending_plan, name FROM companies WHERE activation_token = ? AND activation_expires > ?',
+    [token, now],
+    (err, company) => {
+      if (err || !company) {
+        return res.status(400).json({ error: 'Token de activación inválido o expirado' });
+      }
+
+      db.get('SELECT * FROM saas_plans WHERE id = ?', [company.pending_plan], (err, plan) => {
+        if (err || !plan) {
+          return res.status(400).json({ error: 'Plan pendiente no encontrado' });
+        }
+
+        const today = new Date();
+        let base = new Date(today);
+        db.get('SELECT validUntil FROM companies WHERE id = ?', [company.id], (err2, row) => {
+          if (row && row.validUntil && new Date(row.validUntil) > base) {
+            base = new Date(row.validUntil);
+          }
+          base.setMonth(base.getMonth() + 1);
+          const newValidUntil = base.toISOString().split('T')[0];
+
+          db.run(
+            `UPDATE companies SET 
+              plan = ?, max_loans = ?, max_users = ?, 
+              status = 'active', validUntil = ?,
+              activation_token = NULL, activation_expires = NULL, pending_plan = NULL 
+            WHERE id = ?`,
+            [plan.id, plan.max_loans, plan.max_users, newValidUntil, company.id],
+            function(err3) {
+              if (err3) return res.status(500).json({ error: err3.message });
+              res.json({ 
+                success: true,
+                message: `Plan "${plan.name}" activado exitosamente`,
+                plan: plan.name,
+                validUntil: newValidUntil,
+                companyName: company.name
+              });
+            }
+          );
+        });
+      });
+    }
+  );
 });
 
 // Signup (Crear nueva empresa)

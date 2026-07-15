@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnóstico PrestamosApp</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #111; color: #eee; }
+    .ok { color: #0f0; font-weight: bold; }
+    .fail { color: #f00; font-weight: bold; }
+    #log { white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <h2>Diagnóstico de PrestamosApp</h2>
+  <div id="log">Ejecutando pruebas...</div>
+  <script>
+    var log = document.getElementById('log');
+    function addLog(msg, ok) {
+      var div = document.createElement('div');
+      div.className = ok ? 'ok' : 'fail';
+      div.textContent = (ok ? '✅ ' : '❌ ') + msg;
+      log.appendChild(div);
+    }
+
+    async function runTests() {
+      log.textContent = '';
+
+      addLog('Probando carga de HTML local...', true);
+      try {
+        var r1 = await fetch('/');
+        var t1 = await r1.text();
+        addLog('HTML local cargado: ' + r1.status + ' - ' + t1.substring(0, 80) + '...', r1.ok);
+      } catch (e) {
+        addLog('HTML local NO carga: ' + e.message, false);
+      }
+
+      addLog('Probando carga de CSS local...', true);
+      try {
+        var r2 = await fetch('/style.css');
+        addLog('CSS local cargado: ' + r2.status + ' - ' + r2.statusText, r2.ok);
+      } catch (e) {
+        addLog('CSS local NO carga: ' + e.message, false);
+      }
+
+      addLog('Probando carga de app.js local...', true);
+      try {
+        var r3 = await fetch('/app.js');
+        addLog('app.js local cargado: ' + r3.status + ' - ' + r3.statusText, r3.ok);
+      } catch (e) {
+        addLog('app.js local NO carga: ' + e.message, false);
+      }
+
+      addLog('Probando API health local...', true);
+      try {
+        var r4 = await fetch('/api/health');
+        var d4 = await r4.text();
+        addLog('API health: ' + r4.status + ' - ' + d4, r4.ok);
+      } catch (e) {
+        addLog('API health NO responde: ' + e.message, false);
+      }
+
+      addLog('Probando API public-plans...', true);
+      try {
+        var r5 = await fetch('/api/saas/public-plans');
+        var d5 = await r5.json();
+        addLog('Plans cargados: ' + d5.length + ' planes', r5.ok);
+      } catch (e) {
+        addLog('Plans NO cargan: ' + e.message, false);
+      }
+
+      addLog('\n=== DIAGNÓSTICO COMPLETO ===', true);
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

@@ -27,18 +27,29 @@ let statusChartInstance = null;
 
 const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
 
-// --- LIMPIEZA FORZADA DE CACHÉ (SOLO UNA VEZ POR VERSIÓN) ---
-if (!localStorage.getItem('prestamos_cache_cleared_v6')) {
-  if ('caches' in window) {
-    caches.keys().then(names => {
-      names.forEach(name => caches.delete(name));
-    });
+// --- LIMPIEZA FORZADA DE CACHÉ Y SERVICE WORKER ---
+(function cleanCacheAndSW() {
+  try {
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(registration => registration.unregister());
+    }).catch(() => {});
   }
-  // Eliminar configuraciones antiguas que puedan causar problemas
+
   localStorage.removeItem('prestamos_theme');
-  localStorage.setItem('prestamos_cache_cleared_v6', 'true');
-  console.log("Caché y ajustes antiguos limpiados exitosamente.");
-}
+  localStorage.removeItem('prestamos_cache_cleared_v6');
+  localStorage.removeItem('prestamos_cache_cleared_v7');
+  localStorage.removeItem('prestamos_cache_cleared_v8');
+  localStorage.removeItem('prestamos_cache_cleared_v9');
+  console.log('Caché y service worker limpiados.');
+})();
 
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
@@ -78,6 +89,11 @@ async function loadData() {
   const adminNav = document.getElementById('nav-superadmin');
   if (adminNav) {
     adminNav.style.display = isSuperAdmin ? 'flex' : 'none';
+  }
+  // Mi Plan solo visible para el Super Admin (dueño de la app)
+  const plansNav = document.getElementById('nav-plans');
+  if (plansNav) {
+    plansNav.style.display = isSuperAdmin ? 'flex' : 'none';
   }
 
   showApp();
@@ -487,8 +503,38 @@ navLinks.forEach(link => {
     e.preventDefault();
     const target = link.getAttribute('data-target');
     switchSection(target);
+    closeSidebarDrawer();
   });
 });
+
+// --- MENU CORREDERA (MOVIL) ---
+function openSidebarDrawer() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.add('open');
+  if (ov) ov.classList.add('open');
+}
+
+function closeSidebarDrawer() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('open');
+}
+
+const menuToggle = document.getElementById('menu-toggle');
+if (menuToggle) {
+  menuToggle.addEventListener('click', () => {
+    const sb = document.querySelector('.sidebar');
+    if (sb && sb.classList.contains('open')) closeSidebarDrawer();
+    else openSidebarDrawer();
+  });
+}
+
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+if (sidebarOverlay) {
+  sidebarOverlay.addEventListener('click', closeSidebarDrawer);
+}
 
 // Registrar eventos de botones rápidos (con verificación de existencia)
   const quickLoanBtn = document.getElementById('quick-loan-btn');
@@ -1779,23 +1825,52 @@ async function loadUsers() {
     tbody.innerHTML = '';
     
     if (users.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
       return;
     }
     
+    const currentUser = getCurrentUsername();
     users.forEach(user => {
+      const isSelf = user.username === currentUser;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${user.username}</strong></td>
         <td><span style="font-size: 0.8rem; color: var(--text-muted);">${user.companyId}</span></td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')" ${isSelf ? 'disabled title="No puedes eliminarte a ti mismo"' : ''}>
+            <i data-lucide="trash-2"></i> Eliminar
+          </button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
+    lucide.createIcons();
   } catch (err) {
     console.error('Error cargando usuarios:', err);
-    tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
   }
 }
+
+function getCurrentUsername() {
+  try {
+    const token = getAuthToken();
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.username || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+window.deleteUser = async function(username) {
+  if (!confirm(`¿Eliminar el usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+  try {
+    await apiRequest(`/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    loadUsers();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
 
 // --- INSTALACIÓN DE LA PWA ---
 let deferredPrompt;
@@ -2276,56 +2351,83 @@ async function renderPlansSection() {
     document.getElementById('current-plan-usage').textContent = companyInfo.current_loans || 0;
     document.getElementById('current-plan-max').textContent = companyInfo.max_loans || 0;
 
-    let progress = 0;
-    if (companyInfo.max_loans > 0) {
-      progress = Math.min(100, ((companyInfo.current_loans || 0) / companyInfo.max_loans) * 100);
-    }
-    document.getElementById('current-plan-progress').style.width = `${progress}%`;
-    if (progress > 90) document.getElementById('current-plan-progress').style.backgroundColor = 'var(--danger)';
-    else document.getElementById('current-plan-progress').style.backgroundColor = 'white';
+    const statusLabel = companyInfo.status === 'suspended'
+      ? 'Suspendida'
+      : companyInfo.status === 'active'
+        ? 'Activa'
+        : (companyInfo.status || 'Activa');
+    const statusBadge = companyInfo.status === 'suspended'
+      ? 'badge-danger'
+      : 'badge-success';
+    document.getElementById('current-plan-status').innerHTML = `<span class="badge ${statusBadge}">${statusLabel}</span>`;
+    document.getElementById('current-plan-dates').textContent = companyInfo.validUntil
+      ? `Válida hasta: ${companyInfo.validUntil}`
+      : '';
 
-    // Renderizar tarjetas de planes
     const plansContainer = document.getElementById('plans-container');
     plansContainer.innerHTML = '';
 
+    const isSuspended = companyInfo.status === 'suspended';
+
     plans.forEach(plan => {
       const isCurrent = companyInfo.plan === plan.id;
+      const isAvailable = !isSuspended;
       
       const card = document.createElement('div');
       card.className = `card plan-card ${isCurrent ? 'current-plan' : ''}`;
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
-      card.style.height = '100%';
-      card.style.border = isCurrent ? '2px solid var(--primary)' : '1px solid var(--border)';
-      if (isCurrent) card.style.transform = 'scale(1.02)';
-      card.style.background = 'var(--card-bg)';
-      card.style.borderRadius = 'var(--radius-lg)';
-      card.style.padding = '1.5rem';
+      card.style.cssText = 'display:flex; flex-direction:column; height:100%; border:1px solid var(--border); border-radius:var(--radius-lg); padding:1.5rem; background:var(--card-bg);';
       
+      let featuresHtml = '';
+      try {
+        const feats = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || []);
+        featuresHtml = feats.map(f => `
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>${f}</span>
+          </li>
+        `).join('');
+      } catch (e) {
+        featuresHtml = `
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>Hasta <strong>${plan.max_loans}</strong> préstamos</span>
+          </li>
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>Hasta <strong>plan.max_users</strong> usuarios</span>
+          </li>
+        `;
+      }
+
+      const CONTACT_PHONE = '809-304-6143';
+      const CONTACT_WA = '18093046143';
+      const waMsg = `Hola, deseo activar el plan ${plan.name} (RD$ ${Number(plan.price).toLocaleString('es-DO')}/mes) en PrestamosApp. Le envío el capture del pago para activarlo.`;
+      const ctaText = isCurrent ? 'Plan Actual' : 'Activar por WhatsApp';
+      const ctaClass = isCurrent ? 'btn-secondary' : 'btn-primary';
+      const ctaHref = isCurrent
+        ? '#'
+        : `https://wa.me/${CONTACT_WA}?text=${encodeURIComponent(waMsg)}`;
+
       card.innerHTML = `
         <div style="flex: 1; display: flex; flex-direction: column;">
-          ${isCurrent ? '<span class="badge badge-primary mb-2" style="align-self: flex-start; margin-bottom:1rem;">Tu Plan Actual</span>' : ''}
-          <h3 class="mb-2">${plan.name}</h3>
-          <h2 class="mb-4" style="color: var(--primary); font-size: 2.5rem; font-weight: 800;">$${plan.price}<span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">/mes</span></h2>
+          ${isCurrent ? '<span class="badge badge-primary mb-2" style="align-self: flex-start;">Tu Plan Actual</span>' : ''}
           
-          <ul style="list-style: none; padding: 0; margin-bottom: 2rem; flex: 1;">
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Hasta <strong>${plan.max_loans}</strong> préstamos
-            </li>
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Hasta <strong>${plan.max_users}</strong> usuarios
-            </li>
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Soporte técnico prioritario
-            </li>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">${plan.name}</h3>
+          <div style="display: flex; align-items: baseline; gap: 0.25rem; margin-bottom: 1rem;">
+            <span style="font-size: 2.5rem; font-weight: 800; color: var(--primary);">RD$ ${Number(plan.price).toLocaleString('es-DO')}</span>
+            <span style="font-size: 0.9rem; color: var(--text-muted);">/mes</span>
+          </div>
+          
+          <ul style="list-style: none; padding: 0; margin: 0 0 1.5rem; flex: 1;">
+            ${featuresHtml}
           </ul>
           
-          <a href="https://wa.me/18091234567?text=Hola,%20deseo%20cambiar%20mi%20plan%20a%20${plan.name}%20en%20PrestamosApp" target="_blank" class="btn ${isCurrent ? 'btn-secondary' : 'btn-primary'}" style="width: 100%; text-align: center; display: block; padding: 0.75rem;">
-            ${isCurrent ? 'Mantener Plan' : 'Mejorar a ' + plan.name}
-          </a>
+          <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: auto;">
+            <a href="${ctaHref}" target="_blank" class="btn ${ctaClass}" style="width: 100%; text-align: center; display: block; padding: 0.75rem; ${isCurrent ? 'pointer-events: none; opacity: 0.9;' : ''}">
+              ${ctaText}
+            </a>
+            ${isCurrent ? '' : `<p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: var(--text-muted); text-align: center; line-height: 1.4;">Escribe al <strong style="color: var(--text);">${CONTACT_PHONE}</strong> y envía el <strong style="color: var(--text);">capture del pago</strong> para activar tu plan.</p>`}
+          </div>
         </div>
       `;
       plansContainer.appendChild(card);
@@ -2334,6 +2436,7 @@ async function renderPlansSection() {
   } catch (err) {
     console.error('Error cargando planes:', err);
   }
+}
 
 // --- LOGICA SUPER ADMIN ---
 async function renderSuperAdminSection() {
@@ -2375,6 +2478,7 @@ async function renderSuperAdminSection() {
           <button class="btn btn-sm btn-secondary" onclick="toggleCompanyStatus('${comp.id}', '${comp.status}')" ${isDefault ? 'disabled' : ''}>
             ${comp.status === 'active' ? 'Suspender' : 'Activar'}
           </button>
+          ${!isDefault ? `<button class="btn btn-sm btn-danger" onclick="deleteCompany('${comp.id}')"><i data-lucide="trash-2"></i></button>` : ''}
         </td>
       `;
       tbody.appendChild(tr);
@@ -2419,18 +2523,50 @@ window.changeCompanyPlan = async function(companyId, newPlan) {
 
 window.toggleCompanyStatus = async function(companyId, currentStatus) {
   const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-  if (!confirm(`¿Desea ${newStatus === 'active' ? 'ACTIVAR' : 'SUSPENDER'} esta empresa?`)) return;
+
+  if (newStatus === 'suspended') {
+    if (!confirm('¿Desea SUSPENDER esta empresa? No podrá usar la app hasta reactivarla.')) return;
+    try {
+      await apiRequest(`/saas/companies/${companyId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'suspended' })
+      });
+      renderSuperAdminSection();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+    return;
+  }
+
+  // Activar: preguntar cuántos meses agregar
+  const input = prompt('¿Por cuántos meses deseas activar/renovar esta empresa?', '1');
+  if (input === null) return; // canceló
+  const months = parseInt(input, 10);
+  if (isNaN(months) || months < 1) {
+    alert('Ingresa un número de meses válido (mínimo 1).');
+    return;
+  }
   try {
-    await apiRequest(`/saas/companies/${companyId}/status`, {
+    const res = await apiRequest(`/saas/companies/${companyId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status: newStatus })
+      body: JSON.stringify({ status: 'active', months })
     });
+    alert(`Empresa activada. Válida hasta: ${res.newValidUntil}`);
     renderSuperAdminSection();
   } catch (err) {
     alert('Error: ' + err.message);
   }
 };
-}
+
+window.deleteCompany = async function(companyId) {
+  if (!confirm('¿Eliminar esta empresa permanentemente? Esta acción no se puede deshacer.')) return;
+  try {
+    await apiRequest(`/saas/companies/${companyId}`, { method: 'DELETE' });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
 
 // Modal Planes SaaS
 window.openPlanModal = function(plan = null) {

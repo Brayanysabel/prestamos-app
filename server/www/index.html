@@ -96,7 +96,7 @@
             <span>Configuración</span>
           </a>
         </li>
-        <li>
+        <li id="nav-plans">
           <a class="nav-link" data-target="plans">
             <i data-lucide="star"></i>
             <span>Mi Plan</span>
@@ -512,6 +512,7 @@
                   <tr>
                     <th>Usuario</th>
                     <th>ID Empresa</th>
+                    <th class="text-end">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="users-tbody">
@@ -627,7 +628,7 @@
         </div>
       </section>
         <!-- 7. SECCIÓN MI PLAN -->
-      <section id="section-plans" class="content-section d-none">
+      <section id="sec-plans" class="app-section">
         <div class="card mb-4" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white;">
           <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
             <h2 class="card-title" style="color: white;">Suscripción Actual</h2>
@@ -637,10 +638,12 @@
               <div>
                 <p style="margin-bottom: 0.5rem; opacity: 0.9;">Plan Activo</p>
                 <h3 id="current-plan-name" style="font-size: 2rem; margin: 0; text-transform: capitalize;">-</h3>
+                <p id="current-plan-status" style="margin: 0.5rem 0 0; opacity: 0.85;"></p>
               </div>
               <div style="text-align: right;">
                 <p style="margin-bottom: 0.5rem; opacity: 0.9;">Uso de Préstamos</p>
                 <h3 style="margin: 0;"><span id="current-plan-usage">0</span> / <span id="current-plan-max">0</span></h3>
+                <p id="current-plan-dates" style="margin: 0.5rem 0 0; opacity: 0.85; font-size: 0.9rem;"></p>
               </div>
             </div>
             <div style="margin-top: 1.5rem; background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; overflow: hidden;">
@@ -656,7 +659,7 @@
       </section>
 
       <!-- 8. SECCIÓN SUPER ADMIN -->
-      <section id="section-superadmin" class="content-section d-none">
+      <section id="sec-superadmin" class="app-section">
         <div class="card mb-4" style="border: 2px solid var(--warning);">
           <div class="card-header" style="background-color: rgba(245, 158, 11, 0.1);">
             <h2 class="card-title" style="color: var(--warning);">
@@ -1256,7 +1259,7 @@
     }
   </script>
   
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=14"></script>
 
   <!-- Limpiar Service Workers y caches viejos -->
   <script>

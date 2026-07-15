@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Activar Plan - PrestamosApp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #e2e8f0;
+      padding: 1rem;
+    }
+    .activation-card {
+      background: rgba(30, 41, 59, 0.9);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 1.5rem;
+      padding: 3rem 2.5rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    }
+    .icon-container {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      transition: all 0.5s ease;
+    }
+    .icon-loading { background: rgba(99, 102, 241, 0.2); border: 2px solid rgba(99, 102, 241, 0.5); }
+    .icon-success { background: rgba(34, 197, 94, 0.2); border: 2px solid rgba(34, 197, 94, 0.5); }
+    .icon-error { background: rgba(239, 68, 68, 0.2); border: 2px solid rgba(239, 68, 68, 0.5); }
+    
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: #f1f5f9;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 1rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+    .plan-details {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .plan-details .label { color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.25rem; }
+    .plan-details .value { color: #f1f5f9; font-size: 1.25rem; font-weight: 600; }
+    .plan-details .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .plan-details .row:last-child { border-bottom: none; }
+    
+    .btn {
+      display: inline-block;
+      padding: 0.875rem 2rem;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.3s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: white;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5); }
+    .btn-success {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+      box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+    }
+    .btn-success:hover { transform: translateY(-2px); }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(99, 102, 241, 0.3);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .hidden { display: none; }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.5s ease forwards; }
+  </style>
+</head>
+<body>
+  <div class="activation-card">
+    <!-- Estado: Cargando -->
+    <div id="state-loading">
+      <div class="icon-container icon-loading">
+        <div class="spinner"></div>
+      </div>
+      <h1>Activando Plan...</h1>
+      <p class="subtitle">Estamos procesando tu activación. Por favor espera un momento.</p>
+    </div>
+
+    <!-- Estado: Éxito -->
+    <div id="state-success" class="hidden">
+      <div class="icon-container icon-success fade-in">✅</div>
+      <h1 class="fade-in">¡Plan Activado!</h1>
+      <p class="subtitle fade-in" id="success-message">Tu plan ha sido activado exitosamente.</p>
+      <div class="plan-details fade-in" id="plan-details">
+        <div class="row">
+          <div>
+            <div class="label">Plan</div>
+            <div class="value" id="activated-plan">-</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="label">Válido hasta</div>
+            <div class="value" id="activated-until">-</div>
+          </div>
+        </div>
+      </div>
+      <a href="/" class="btn btn-success fade-in">Ir a la Aplicación</a>
+    </div>
+
+    <!-- Estado: Error -->
+    <div id="state-error" class="hidden">
+      <div class="icon-container icon-error fade-in">❌</div>
+      <h1 class="fade-in">Error de Activación</h1>
+      <p class="subtitle fade-in" id="error-message">El link de activación es inválido o ha expirado.</p>
+      <a href="/" class="btn btn-primary fade-in">Volver al Inicio</a>
+    </div>
+  </div>
+
+  <script>
+    (async function() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      
+      if (!token) {
+        showError('No se proporcionó un token de activación.');
+        return;
+      }
+
+      try {
+        const resp = await fetch(`/api/activate/${token}`);
+        const data = await resp.json();
+        
+        if (resp.ok && data.success) {
+          showSuccess(data);
+        } else {
+          showError(data.error || 'Error desconocido al activar el plan.');
+        }
+      } catch (err) {
+        showError('Error de conexión. Intenta nuevamente.');
+      }
+    })();
+
+    function showSuccess(data) {
+      document.getElementById('state-loading').classList.add('hidden');
+      document.getElementById('state-success').classList.remove('hidden');
+      document.getElementById('success-message').textContent = data.message;
+      document.getElementById('activated-plan').textContent = data.plan;
+      document.getElementById('activated-until').textContent = data.validUntil;
+    }
+
+    function showError(message) {
+      document.getElementById('state-loading').classList.add('hidden');
+      document.getElementById('state-error').classList.remove('hidden');
+      document.getElementById('error-message').textContent = message;
+    }
+  </script>
+</body>
+</html>

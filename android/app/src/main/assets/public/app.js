@@ -27,18 +27,29 @@ let statusChartInstance = null;
 
 const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
 
-// --- LIMPIEZA FORZADA DE CACHÉ (SOLO UNA VEZ POR VERSIÓN) ---
-if (!localStorage.getItem('prestamos_cache_cleared_v6')) {
-  if ('caches' in window) {
-    caches.keys().then(names => {
-      names.forEach(name => caches.delete(name));
-    });
+// --- LIMPIEZA FORZADA DE CACHÉ Y SERVICE WORKER ---
+(function cleanCacheAndSW() {
+  try {
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.forEach(name => caches.delete(name));
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(registration => registration.unregister());
+    }).catch(() => {});
   }
-  // Eliminar configuraciones antiguas que puedan causar problemas
+
   localStorage.removeItem('prestamos_theme');
-  localStorage.setItem('prestamos_cache_cleared_v6', 'true');
-  console.log("Caché y ajustes antiguos limpiados exitosamente.");
-}
+  localStorage.removeItem('prestamos_cache_cleared_v6');
+  localStorage.removeItem('prestamos_cache_cleared_v7');
+  localStorage.removeItem('prestamos_cache_cleared_v8');
+  localStorage.removeItem('prestamos_cache_cleared_v9');
+  console.log('Caché y service worker limpiados.');
+})();
 
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
@@ -78,6 +89,11 @@ async function loadData() {
   const adminNav = document.getElementById('nav-superadmin');
   if (adminNav) {
     adminNav.style.display = isSuperAdmin ? 'flex' : 'none';
+  }
+  // Mi Plan solo visible para el Super Admin (dueño de la app)
+  const plansNav = document.getElementById('nav-plans');
+  if (plansNav) {
+    plansNav.style.display = isSuperAdmin ? 'flex' : 'none';
   }
 
   showApp();
@@ -487,8 +503,38 @@ navLinks.forEach(link => {
     e.preventDefault();
     const target = link.getAttribute('data-target');
     switchSection(target);
+    closeSidebarDrawer();
   });
 });
+
+// --- MENU CORREDERA (MOVIL) ---
+function openSidebarDrawer() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.add('open');
+  if (ov) ov.classList.add('open');
+}
+
+function closeSidebarDrawer() {
+  const sb = document.querySelector('.sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('open');
+}
+
+const menuToggle = document.getElementById('menu-toggle');
+if (menuToggle) {
+  menuToggle.addEventListener('click', () => {
+    const sb = document.querySelector('.sidebar');
+    if (sb && sb.classList.contains('open')) closeSidebarDrawer();
+    else openSidebarDrawer();
+  });
+}
+
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+if (sidebarOverlay) {
+  sidebarOverlay.addEventListener('click', closeSidebarDrawer);
+}
 
 // Registrar eventos de botones rápidos (con verificación de existencia)
   const quickLoanBtn = document.getElementById('quick-loan-btn');
@@ -1779,23 +1825,52 @@ async function loadUsers() {
     tbody.innerHTML = '';
     
     if (users.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center" style="padding: 1rem; color: var(--text-muted);">No hay usuarios adicionales.</td></tr>';
       return;
     }
     
+    const currentUser = getCurrentUsername();
     users.forEach(user => {
+      const isSelf = user.username === currentUser;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${user.username}</strong></td>
         <td><span style="font-size: 0.8rem; color: var(--text-muted);">${user.companyId}</span></td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-danger" onclick="deleteUser('${user.username}')" ${isSelf ? 'disabled title="No puedes eliminarte a ti mismo"' : ''}>
+            <i data-lucide="trash-2"></i> Eliminar
+          </button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
+    lucide.createIcons();
   } catch (err) {
     console.error('Error cargando usuarios:', err);
-    tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center" style="color: var(--danger);">Error cargando usuarios.</td></tr>';
   }
 }
+
+function getCurrentUsername() {
+  try {
+    const token = getAuthToken();
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.username || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+window.deleteUser = async function(username) {
+  if (!confirm(`¿Eliminar el usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+  try {
+    await apiRequest(`/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    loadUsers();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
 
 // --- INSTALACIÓN DE LA PWA ---
 let deferredPrompt;
@@ -2276,56 +2351,121 @@ async function renderPlansSection() {
     document.getElementById('current-plan-usage').textContent = companyInfo.current_loans || 0;
     document.getElementById('current-plan-max').textContent = companyInfo.max_loans || 0;
 
-    let progress = 0;
-    if (companyInfo.max_loans > 0) {
-      progress = Math.min(100, ((companyInfo.current_loans || 0) / companyInfo.max_loans) * 100);
-    }
-    document.getElementById('current-plan-progress').style.width = `${progress}%`;
-    if (progress > 90) document.getElementById('current-plan-progress').style.backgroundColor = 'var(--danger)';
-    else document.getElementById('current-plan-progress').style.backgroundColor = 'white';
+    const statusLabel = companyInfo.status === 'suspended'
+      ? 'Suspendida'
+      : companyInfo.status === 'active'
+        ? 'Activa'
+        : (companyInfo.status || 'Activa');
+    const statusBadge = companyInfo.status === 'suspended'
+      ? 'badge-danger'
+      : 'badge-success';
+    document.getElementById('current-plan-status').innerHTML = `<span class="badge ${statusBadge}">${statusLabel}</span>`;
+    document.getElementById('current-plan-dates').textContent = companyInfo.validUntil
+      ? `Válida hasta: ${companyInfo.validUntil}`
+      : '';
 
-    // Renderizar tarjetas de planes
+    // Mostrar banner de activación pendiente si hay un plan pendiente
+    let pendingBanner = document.getElementById('pending-activation-banner');
+    if (!pendingBanner) {
+      pendingBanner = document.createElement('div');
+      pendingBanner.id = 'pending-activation-banner';
+      const plansSection = document.getElementById('sec-plans');
+      const plansH3 = plansSection.querySelector('h3.mb-4');
+      if (plansH3) plansH3.before(pendingBanner);
+    }
+    
+    if (companyInfo.pending_plan && companyInfo.activation_token) {
+      const pendingPlanInfo = plans.find(p => p.id === companyInfo.pending_plan);
+      const pendingPlanName = pendingPlanInfo ? pendingPlanInfo.name : companyInfo.pending_plan;
+      pendingBanner.innerHTML = `
+        <div class="card mb-4" style="border: 2px solid #22c55e; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05));">
+          <div class="card-body" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 style="margin: 0 0 0.25rem; font-size: 1.1rem; color: #22c55e;">
+                <i data-lucide="gift" style="width:20px;height:20px;vertical-align:middle;margin-right:0.5rem;"></i>
+                ¡Plan Pendiente de Activación!
+              </h3>
+              <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                El administrador ha asignado el plan <strong style="color: var(--text);">${pendingPlanName}</strong> a tu cuenta. Haz clic para activarlo.
+              </p>
+            </div>
+            <button onclick="activatePendingPlan('${companyInfo.activation_token}')" 
+              class="btn btn-success" 
+              style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 0.75rem 1.5rem; font-weight: 600; white-space: nowrap; border-radius: 0.75rem; box-shadow: 0 4px 15px rgba(34,197,94,0.3);">
+              ✨ Activar Plan ${pendingPlanName}
+            </button>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    } else {
+      pendingBanner.innerHTML = '';
+    }
+
     const plansContainer = document.getElementById('plans-container');
     plansContainer.innerHTML = '';
 
+    const isSuspended = companyInfo.status === 'suspended';
+
     plans.forEach(plan => {
       const isCurrent = companyInfo.plan === plan.id;
+      const isAvailable = !isSuspended;
       
       const card = document.createElement('div');
       card.className = `card plan-card ${isCurrent ? 'current-plan' : ''}`;
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
-      card.style.height = '100%';
-      card.style.border = isCurrent ? '2px solid var(--primary)' : '1px solid var(--border)';
-      if (isCurrent) card.style.transform = 'scale(1.02)';
-      card.style.background = 'var(--card-bg)';
-      card.style.borderRadius = 'var(--radius-lg)';
-      card.style.padding = '1.5rem';
+      card.style.cssText = 'display:flex; flex-direction:column; height:100%; border:1px solid var(--border); border-radius:var(--radius-lg); padding:1.5rem; background:var(--card-bg);';
       
+      let featuresHtml = '';
+      try {
+        const feats = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || []);
+        featuresHtml = feats.map(f => `
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>${f}</span>
+          </li>
+        `).join('');
+      } catch (e) {
+        featuresHtml = `
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>Hasta <strong>${plan.max_loans}</strong> préstamos</span>
+          </li>
+          <li style="margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+            <i data-lucide="check" style="color: var(--success); width: 16px; height: 16px;"></i>
+            <span>Hasta <strong>plan.max_users</strong> usuarios</span>
+          </li>
+        `;
+      }
+
+      const CONTACT_PHONE = '809-304-6143';
+      const CONTACT_WA = '18093046143';
+      const waMsg = `Hola, deseo activar el plan ${plan.name} (RD$ ${Number(plan.price).toLocaleString('es-DO')}/mes) en PrestamosApp. Le envío el capture del pago para activarlo.`;
+      const ctaText = isCurrent ? 'Plan Actual' : 'Activar por WhatsApp';
+      const ctaClass = isCurrent ? 'btn-secondary' : 'btn-primary';
+      const ctaHref = isCurrent
+        ? '#'
+        : `https://wa.me/${CONTACT_WA}?text=${encodeURIComponent(waMsg)}`;
+
       card.innerHTML = `
         <div style="flex: 1; display: flex; flex-direction: column;">
-          ${isCurrent ? '<span class="badge badge-primary mb-2" style="align-self: flex-start; margin-bottom:1rem;">Tu Plan Actual</span>' : ''}
-          <h3 class="mb-2">${plan.name}</h3>
-          <h2 class="mb-4" style="color: var(--primary); font-size: 2.5rem; font-weight: 800;">$${plan.price}<span style="font-size: 1rem; color: var(--text-muted); font-weight: normal;">/mes</span></h2>
+          ${isCurrent ? '<span class="badge badge-primary mb-2" style="align-self: flex-start;">Tu Plan Actual</span>' : ''}
           
-          <ul style="list-style: none; padding: 0; margin-bottom: 2rem; flex: 1;">
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Hasta <strong>${plan.max_loans}</strong> préstamos
-            </li>
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Hasta <strong>${plan.max_users}</strong> usuarios
-            </li>
-            <li style="margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
-              <i data-lucide="check" style="color: var(--success); width: 18px; height: 18px;"></i>
-              Soporte técnico prioritario
-            </li>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">${plan.name}</h3>
+          <div style="display: flex; align-items: baseline; gap: 0.25rem; margin-bottom: 1rem;">
+            <span style="font-size: 2.5rem; font-weight: 800; color: var(--primary);">RD$ ${Number(plan.price).toLocaleString('es-DO')}</span>
+            <span style="font-size: 0.9rem; color: var(--text-muted);">/mes</span>
+          </div>
+          
+          <ul style="list-style: none; padding: 0; margin: 0 0 1.5rem; flex: 1;">
+            ${featuresHtml}
           </ul>
           
-          <a href="https://wa.me/18091234567?text=Hola,%20deseo%20cambiar%20mi%20plan%20a%20${plan.name}%20en%20PrestamosApp" target="_blank" class="btn ${isCurrent ? 'btn-secondary' : 'btn-primary'}" style="width: 100%; text-align: center; display: block; padding: 0.75rem;">
-            ${isCurrent ? 'Mantener Plan' : 'Mejorar a ' + plan.name}
-          </a>
+          <div style="border-top: 1px solid var(--border); padding-top: 1rem; margin-top: auto;">
+            <a href="${ctaHref}" target="_blank" class="btn ${ctaClass}" style="width: 100%; text-align: center; display: block; padding: 0.75rem; ${isCurrent ? 'pointer-events: none; opacity: 0.9;' : ''}">
+              ${ctaText}
+            </a>
+            ${isCurrent ? '' : `<p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: var(--text-muted); text-align: center; line-height: 1.4;">Escribe al <strong style="color: var(--text);">${CONTACT_PHONE}</strong> y envía el <strong style="color: var(--text);">capture del pago</strong> para activar tu plan.</p>`}
+          </div>
         </div>
       `;
       plansContainer.appendChild(card);
@@ -2334,6 +2474,7 @@ async function renderPlansSection() {
   } catch (err) {
     console.error('Error cargando planes:', err);
   }
+}
 
 // --- LOGICA SUPER ADMIN ---
 async function renderSuperAdminSection() {
@@ -2371,10 +2512,14 @@ async function renderSuperAdminSection() {
             <span><i data-lucide="hand-coins" style="width:14px; height:14px"></i> Préstamos: ${comp.loanCount}</span>
           </div>
         </td>
-        <td class="text-end">
+        <td class="text-end" style="white-space: nowrap;">
+          ${!isDefault ? `<button class="btn btn-sm btn-primary" onclick="generateActivationLink('${comp.id}', '${comp.plan}')" title="Generar Link de Activación">
+            <i data-lucide="link" style="width:14px;height:14px"></i> Activar Plan
+          </button>` : ''}
           <button class="btn btn-sm btn-secondary" onclick="toggleCompanyStatus('${comp.id}', '${comp.status}')" ${isDefault ? 'disabled' : ''}>
             ${comp.status === 'active' ? 'Suspender' : 'Activar'}
           </button>
+          ${!isDefault ? `<button class="btn btn-sm btn-danger" onclick="deleteCompany('${comp.id}')"><i data-lucide="trash-2"></i></button>` : ''}
         </td>
       `;
       tbody.appendChild(tr);
@@ -2390,6 +2535,10 @@ async function renderSuperAdminSection() {
         <td>$${plan.price}</td>
         <td>${plan.max_loans}</td>
         <td>${plan.max_users}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary" onclick='openPlanModal(${JSON.stringify(plan)})'><i data-lucide="edit"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deletePlan('${plan.id}')"><i data-lucide="trash-2"></i></button>
+        </td>
       `;
       ptbody.appendChild(tr);
     });
@@ -2415,16 +2564,217 @@ window.changeCompanyPlan = async function(companyId, newPlan) {
 
 window.toggleCompanyStatus = async function(companyId, currentStatus) {
   const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-  if (!confirm(`¿Desea ${newStatus === 'active' ? 'ACTIVAR' : 'SUSPENDER'} esta empresa?`)) return;
+
+  if (newStatus === 'suspended') {
+    if (!confirm('¿Desea SUSPENDER esta empresa? No podrá usar la app hasta reactivarla.')) return;
+    try {
+      await apiRequest(`/saas/companies/${companyId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'suspended' })
+      });
+      renderSuperAdminSection();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+    return;
+  }
+
+  // Activar: preguntar cuántos meses agregar
+  const input = prompt('¿Por cuántos meses deseas activar/renovar esta empresa?', '1');
+  if (input === null) return; // canceló
+  const months = parseInt(input, 10);
+  if (isNaN(months) || months < 1) {
+    alert('Ingresa un número de meses válido (mínimo 1).');
+    return;
+  }
   try {
-    await apiRequest(`/saas/companies/${companyId}/status`, {
+    const res = await apiRequest(`/saas/companies/${companyId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status: newStatus })
+      body: JSON.stringify({ status: 'active', months })
     });
+    alert(`Empresa activada. Válida hasta: ${res.newValidUntil}`);
     renderSuperAdminSection();
   } catch (err) {
     alert('Error: ' + err.message);
   }
 };
-}
 
+window.deleteCompany = async function(companyId) {
+  if (!confirm('¿Eliminar esta empresa permanentemente? Esta acción no se puede deshacer.')) return;
+  try {
+    await apiRequest(`/saas/companies/${companyId}`, { method: 'DELETE' });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
+
+// Modal Planes SaaS
+window.openPlanModal = function(plan = null) {
+  const modal = document.getElementById('plan-modal');
+  const title = document.getElementById('plan-modal-title');
+  const form = document.getElementById('plan-form');
+  const idInput = document.getElementById('plan-id-input');
+  
+  form.reset();
+  
+  if (plan) {
+    title.textContent = 'Editar Plan SaaS';
+    document.getElementById('plan-id').value = plan.id;
+    idInput.value = plan.id;
+    idInput.disabled = true;
+    document.getElementById('plan-name').value = plan.name;
+    document.getElementById('plan-price').value = plan.price;
+    document.getElementById('plan-max-loans').value = plan.max_loans;
+    document.getElementById('plan-max-users').value = plan.max_users;
+  } else {
+    title.textContent = 'Crear Plan SaaS';
+    document.getElementById('plan-id').value = '';
+    idInput.disabled = false;
+  }
+  
+  modal.style.display = 'flex';
+};
+
+window.closePlanModal = function() {
+  document.getElementById('plan-modal').style.display = 'none';
+};
+
+document.getElementById('plan-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const originalId = document.getElementById('plan-id').value;
+  const id = document.getElementById('plan-id-input').value;
+  const name = document.getElementById('plan-name').value;
+  const price = document.getElementById('plan-price').value;
+  const max_loans = document.getElementById('plan-max-loans').value;
+  const max_users = document.getElementById('plan-max-users').value;
+  
+  try {
+    if (originalId) {
+      await apiRequest(`/saas/plans/${originalId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, price, max_loans, max_users })
+      });
+    } else {
+      await apiRequest('/saas/plans', {
+        method: 'POST',
+        body: JSON.stringify({ id, name, price, max_loans, max_users })
+      });
+    }
+    closePlanModal();
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error guardando el plan: ' + err.message);
+  }
+});
+
+window.deletePlan = async function(planId) {
+  if (!confirm('¿Seguro que desea eliminar este plan? Los inquilinos con este plan podrían fallar si no se reasignan.')) return;
+  try {
+    await apiRequest(`/saas/plans/${planId}`, { method: 'DELETE' });
+    renderSuperAdminSection();
+  } catch (err) {
+    alert('Error eliminando plan: ' + err.message);
+  }
+};
+
+// --- Generar Link de Activación de Plan ---
+window.generateActivationLink = async function(companyId, currentPlan) {
+  try {
+    const plans = await apiRequest('/saas/public-plans');
+    
+    // Crear modal de selección de plan
+    const planOptions = plans.map(p => 
+      `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>${p.name} - RD$ ${Number(p.price).toLocaleString('es-DO')}/mes</option>`
+    ).join('');
+    
+    const selectedPlan = prompt(
+      'Selecciona el plan a activar (escribe el ID del plan):\n\n' +
+      plans.map(p => `• ${p.id} → ${p.name} (RD$ ${Number(p.price).toLocaleString('es-DO')}/mes)`).join('\n') +
+      '\n\nEscribe el ID del plan:',
+      currentPlan
+    );
+    
+    if (!selectedPlan) return;
+    
+    const res = await apiRequest(`/saas/companies/${companyId}/generate-activation`, {
+      method: 'POST',
+      body: JSON.stringify({ planId: selectedPlan })
+    });
+    
+    // Copiar al portapapeles
+    try {
+      await navigator.clipboard.writeText(res.link);
+    } catch(e) { /* clipboard may fail on some devices */ }
+    
+    // Mostrar modal con el link
+    const modalHtml = `
+      <div id="activation-link-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
+        <div style="background:var(--card-bg,#1e293b);border:1px solid var(--border,#334155);border-radius:1rem;padding:2rem;max-width:520px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+          <div style="text-align:center;margin-bottom:1.5rem;">
+            <div style="width:60px;height:60px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;">🔗</div>
+            <h3 style="margin:0 0 0.5rem;font-size:1.25rem;">Link de Activación Generado</h3>
+            <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:0.9rem;">Plan: <strong>${res.plan}</strong> · Expira en ${res.expiresIn}</p>
+          </div>
+          <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(99,102,241,0.3);border-radius:0.5rem;padding:0.75rem;word-break:break-all;font-family:monospace;font-size:0.8rem;color:#a5b4fc;margin-bottom:1.5rem;">
+            ${res.link}
+          </div>
+          <div style="display:flex;gap:0.75rem;">
+            <button onclick="navigator.clipboard.writeText('${res.link}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='Copiar Link',2000)" class="btn btn-primary" style="flex:1;padding:0.75rem;">
+              Copiar Link
+            </button>
+            <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Activa tu plan aquí: ${res.link}'),'_blank')" class="btn btn-success" style="flex:1;padding:0.75rem;background:linear-gradient(135deg,#22c55e,#16a34a);">
+              Enviar por WhatsApp
+            </button>
+          </div>
+          <button onclick="document.getElementById('activation-link-modal').remove()" style="display:block;width:100%;margin-top:0.75rem;padding:0.5rem;background:transparent;border:1px solid var(--border,#334155);border-radius:0.5rem;color:var(--text-muted,#94a3b8);cursor:pointer;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Remove existing modal if any
+    const existing = document.getElementById('activation-link-modal');
+    if (existing) existing.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+  } catch (err) {
+    alert('Error generando link de activación: ' + err.message);
+  }
+};
+
+// --- Activar plan pendiente (usuario final) ---
+window.activatePendingPlan = async function(token) {
+  if (!confirm('¿Deseas activar tu nuevo plan ahora?')) return;
+  
+  try {
+    const resp = await fetch(`/api/activate/${token}`);
+    const data = await resp.json();
+    
+    if (resp.ok && data.success) {
+      // Mostrar mensaje de éxito
+      const modalHtml = `
+        <div id="plan-activated-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
+          <div style="background:var(--card-bg,#1e293b);border:1px solid rgba(34,197,94,0.4);border-radius:1rem;padding:2.5rem;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+            <div style="width:70px;height:70px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;">✅</div>
+            <h3 style="margin:0 0 0.5rem;font-size:1.35rem;">¡Plan Activado!</h3>
+            <p style="color:var(--text-muted,#94a3b8);margin:0 0 0.5rem;font-size:0.95rem;">${data.message}</p>
+            <p style="color:var(--text-muted,#94a3b8);margin:0 0 1.5rem;font-size:0.85rem;">Válido hasta: <strong style="color:#22c55e;">${data.validUntil}</strong></p>
+            <button onclick="document.getElementById('plan-activated-modal').remove();renderPlansSection();" 
+              class="btn btn-success" 
+              style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:0.75rem 2rem;font-weight:600;border-radius:0.75rem;width:100%;">
+              ¡Entendido!
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+    } else {
+      alert(data.error || 'Error al activar el plan.');
+    }
+  } catch (err) {
+    alert('Error de conexión al activar el plan: ' + err.message);
+  }
+};
