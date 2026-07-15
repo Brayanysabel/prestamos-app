@@ -90,10 +90,10 @@ async function loadData() {
   if (adminNav) {
     adminNav.style.display = isSuperAdmin ? 'flex' : 'none';
   }
-  // Mi Plan solo visible para el Super Admin (dueño de la app)
+  // Mi Plan solo visible para usuarios/inquilinos, NO para el Super Admin
   const plansNav = document.getElementById('nav-plans');
   if (plansNav) {
-    plansNav.style.display = isSuperAdmin ? 'flex' : 'none';
+    plansNav.style.display = !isSuperAdmin ? 'flex' : 'none';
   }
 
   showApp();
@@ -2364,6 +2364,44 @@ async function renderPlansSection() {
       ? `Válida hasta: ${companyInfo.validUntil}`
       : '';
 
+    // Mostrar banner de activación pendiente si hay un plan pendiente
+    let pendingBanner = document.getElementById('pending-activation-banner');
+    if (!pendingBanner) {
+      pendingBanner = document.createElement('div');
+      pendingBanner.id = 'pending-activation-banner';
+      const plansSection = document.getElementById('sec-plans');
+      const plansH3 = plansSection.querySelector('h3.mb-4');
+      if (plansH3) plansH3.before(pendingBanner);
+    }
+    
+    if (companyInfo.pending_plan && companyInfo.activation_token) {
+      const pendingPlanInfo = plans.find(p => p.id === companyInfo.pending_plan);
+      const pendingPlanName = pendingPlanInfo ? pendingPlanInfo.name : companyInfo.pending_plan;
+      pendingBanner.innerHTML = `
+        <div class="card mb-4" style="border: 2px solid #22c55e; background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.05));">
+          <div class="card-body" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 style="margin: 0 0 0.25rem; font-size: 1.1rem; color: #22c55e;">
+                <i data-lucide="gift" style="width:20px;height:20px;vertical-align:middle;margin-right:0.5rem;"></i>
+                ¡Plan Pendiente de Activación!
+              </h3>
+              <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                El administrador ha asignado el plan <strong style="color: var(--text);">${pendingPlanName}</strong> a tu cuenta. Haz clic para activarlo.
+              </p>
+            </div>
+            <button onclick="activatePendingPlan('${companyInfo.activation_token}')" 
+              class="btn btn-success" 
+              style="background: linear-gradient(135deg, #22c55e, #16a34a); padding: 0.75rem 1.5rem; font-weight: 600; white-space: nowrap; border-radius: 0.75rem; box-shadow: 0 4px 15px rgba(34,197,94,0.3);">
+              ✨ Activar Plan ${pendingPlanName}
+            </button>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    } else {
+      pendingBanner.innerHTML = '';
+    }
+
     const plansContainer = document.getElementById('plans-container');
     plansContainer.innerHTML = '';
 
@@ -2474,7 +2512,10 @@ async function renderSuperAdminSection() {
             <span><i data-lucide="hand-coins" style="width:14px; height:14px"></i> Préstamos: ${comp.loanCount}</span>
           </div>
         </td>
-        <td class="text-end">
+        <td class="text-end" style="white-space: nowrap;">
+          ${!isDefault ? `<button class="btn btn-sm btn-primary" onclick="generateActivationLink('${comp.id}', '${comp.plan}')" title="Generar Link de Activación">
+            <i data-lucide="link" style="width:14px;height:14px"></i> Activar Plan
+          </button>` : ''}
           <button class="btn btn-sm btn-secondary" onclick="toggleCompanyStatus('${comp.id}', '${comp.status}')" ${isDefault ? 'disabled' : ''}>
             ${comp.status === 'active' ? 'Suspender' : 'Activar'}
           </button>
@@ -2637,3 +2678,103 @@ window.deletePlan = async function(planId) {
   }
 };
 
+// --- Generar Link de Activación de Plan ---
+window.generateActivationLink = async function(companyId, currentPlan) {
+  try {
+    const plans = await apiRequest('/saas/public-plans');
+    
+    // Crear modal de selección de plan
+    const planOptions = plans.map(p => 
+      `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>${p.name} - RD$ ${Number(p.price).toLocaleString('es-DO')}/mes</option>`
+    ).join('');
+    
+    const selectedPlan = prompt(
+      'Selecciona el plan a activar (escribe el ID del plan):\n\n' +
+      plans.map(p => `• ${p.id} → ${p.name} (RD$ ${Number(p.price).toLocaleString('es-DO')}/mes)`).join('\n') +
+      '\n\nEscribe el ID del plan:',
+      currentPlan
+    );
+    
+    if (!selectedPlan) return;
+    
+    const res = await apiRequest(`/saas/companies/${companyId}/generate-activation`, {
+      method: 'POST',
+      body: JSON.stringify({ planId: selectedPlan })
+    });
+    
+    // Copiar al portapapeles
+    try {
+      await navigator.clipboard.writeText(res.link);
+    } catch(e) { /* clipboard may fail on some devices */ }
+    
+    // Mostrar modal con el link
+    const modalHtml = `
+      <div id="activation-link-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
+        <div style="background:var(--card-bg,#1e293b);border:1px solid var(--border,#334155);border-radius:1rem;padding:2rem;max-width:520px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+          <div style="text-align:center;margin-bottom:1.5rem;">
+            <div style="width:60px;height:60px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;">🔗</div>
+            <h3 style="margin:0 0 0.5rem;font-size:1.25rem;">Link de Activación Generado</h3>
+            <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:0.9rem;">Plan: <strong>${res.plan}</strong> · Expira en ${res.expiresIn}</p>
+          </div>
+          <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(99,102,241,0.3);border-radius:0.5rem;padding:0.75rem;word-break:break-all;font-family:monospace;font-size:0.8rem;color:#a5b4fc;margin-bottom:1.5rem;">
+            ${res.link}
+          </div>
+          <div style="display:flex;gap:0.75rem;">
+            <button onclick="navigator.clipboard.writeText('${res.link}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='Copiar Link',2000)" class="btn btn-primary" style="flex:1;padding:0.75rem;">
+              Copiar Link
+            </button>
+            <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Activa tu plan aquí: ${res.link}'),'_blank')" class="btn btn-success" style="flex:1;padding:0.75rem;background:linear-gradient(135deg,#22c55e,#16a34a);">
+              Enviar por WhatsApp
+            </button>
+          </div>
+          <button onclick="document.getElementById('activation-link-modal').remove()" style="display:block;width:100%;margin-top:0.75rem;padding:0.5rem;background:transparent;border:1px solid var(--border,#334155);border-radius:0.5rem;color:var(--text-muted,#94a3b8);cursor:pointer;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Remove existing modal if any
+    const existing = document.getElementById('activation-link-modal');
+    if (existing) existing.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+  } catch (err) {
+    alert('Error generando link de activación: ' + err.message);
+  }
+};
+
+// --- Activar plan pendiente (usuario final) ---
+window.activatePendingPlan = async function(token) {
+  if (!confirm('¿Deseas activar tu nuevo plan ahora?')) return;
+  
+  try {
+    const resp = await fetch(`/api/activate/${token}`);
+    const data = await resp.json();
+    
+    if (resp.ok && data.success) {
+      // Mostrar mensaje de éxito
+      const modalHtml = `
+        <div id="plan-activated-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
+          <div style="background:var(--card-bg,#1e293b);border:1px solid rgba(34,197,94,0.4);border-radius:1rem;padding:2.5rem;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+            <div style="width:70px;height:70px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;">✅</div>
+            <h3 style="margin:0 0 0.5rem;font-size:1.35rem;">¡Plan Activado!</h3>
+            <p style="color:var(--text-muted,#94a3b8);margin:0 0 0.5rem;font-size:0.95rem;">${data.message}</p>
+            <p style="color:var(--text-muted,#94a3b8);margin:0 0 1.5rem;font-size:0.85rem;">Válido hasta: <strong style="color:#22c55e;">${data.validUntil}</strong></p>
+            <button onclick="document.getElementById('plan-activated-modal').remove();renderPlansSection();" 
+              class="btn btn-success" 
+              style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:0.75rem 2rem;font-weight:600;border-radius:0.75rem;width:100%;">
+              ¡Entendido!
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modalHtml);
+    } else {
+      alert(data.error || 'Error al activar el plan.');
+    }
+  } catch (err) {
+    alert('Error de conexión al activar el plan: ' + err.message);
+  }
+};

@@ -90,10 +90,10 @@ async function loadData() {
   if (adminNav) {
     adminNav.style.display = isSuperAdmin ? 'flex' : 'none';
   }
-  // Mi Plan solo visible para el Super Admin (dueño de la app)
+  // Mi Plan solo visible para usuarios/inquilinos, NO para el Super Admin
   const plansNav = document.getElementById('nav-plans');
   if (plansNav) {
-    plansNav.style.display = isSuperAdmin ? 'flex' : 'none';
+    plansNav.style.display = !isSuperAdmin ? 'flex' : 'none';
   }
 
   showApp();
