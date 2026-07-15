@@ -701,6 +701,7 @@
                   <th>Precio Mensual</th>
                   <th>Límite de Préstamos</th>
                   <th>Límite de Usuarios</th>
+                  <th class="text-end">Acciones</th>
                 </tr>
               </thead>
               <tbody id="saas-plans-tbody">
@@ -714,6 +715,48 @@
     </main>
   </div>
   
+  <!-- ================= MODAL: REGISTRAR PLAN SAAS ================= -->
+  <div id="modal-plan" class="modal-overlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 id="plan-modal-title">Registrar Nuevo Plan</h2>
+        <button class="close-btn" onclick="closeModal('modal-plan')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="saas-plan-form">
+          <div class="form-group">
+            <label for="plan-id">ID del Plan (ej: basico)</label>
+            <input type="text" id="plan-id" required>
+            <small style="color: var(--text-muted);">Sin espacios ni mayúsculas. Solo se usa internamente.</small>
+          </div>
+          <div class="form-group">
+            <label for="plan-name">Nombre Visible (ej: Plan Básico)</label>
+            <input type="text" id="plan-name" required>
+          </div>
+          <div class="form-group">
+            <label for="plan-price">Precio Mensual</label>
+            <input type="number" id="plan-price" min="0" step="0.01" required>
+          </div>
+          <div class="form-group">
+            <label for="plan-max-loans">Límite de Préstamos</label>
+            <input type="number" id="plan-max-loans" min="-1" required>
+            <small style="color: var(--text-muted);">Usa -1 o 99999 para "ilimitado"</small>
+          </div>
+          <div class="form-group">
+            <label for="plan-max-users">Límite de Usuarios</label>
+            <input type="number" id="plan-max-users" min="-1" required>
+          </div>
+          <div class="form-actions" style="margin-top: 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modal-plan')">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar Plan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= MODAL: REGISTRAR CLIENTE ================= -->
   <div id="modal-client" class="modal-overlay">
     <div class="modal-container">
