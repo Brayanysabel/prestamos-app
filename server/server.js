@@ -2055,10 +2055,10 @@ try {
   waClient.on('disconnected', (reason) => {
     console.log('WhatsApp desconectado:', reason);
     isWaReady = false;
-    waClient.initialize();
+    waClient.initialize().catch(e => console.log('WA Init Error:', e.message));
   });
 
-  waClient.initialize();
+  waClient.initialize().catch(e => console.log('WA Init Error:', e.message));
 } catch (e) {
   console.log('whatsapp-web.js no está instalado o falló al iniciar:', e.message);
 }
