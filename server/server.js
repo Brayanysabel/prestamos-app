@@ -651,6 +651,12 @@ app.put('/api/settings', requireAdmin, (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// Debug Endpoint
+app.get('/api/debug-env', (req, res) => {
+  const dbUrl = process.env.DATABASE_URL || 'NONE';
+  const masked = dbUrl.length > 15 ? dbUrl.substring(0, 15) + '...' + dbUrl.substring(dbUrl.length - 10) : dbUrl;
+  res.json({ dbUrl: masked });
+});
 
 // Login
 app.post('/api/login', (req, res) => {
