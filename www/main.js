@@ -127,16 +127,19 @@ async function loadData() {
     plansNav.style.display = 'none';
   }
   
+  const userRole = localStorage.getItem('prestamos_user_role');
+  const isAdmin = userRole === 'admin' || isSuperAdmin;
+  
   // Ocultar Gestión de Usuarios a empleados normales
   const usersCard = document.getElementById('settings-users-card');
   if (usersCard) {
-    usersCard.style.display = isSuperAdmin ? 'block' : 'none';
+    usersCard.style.display = isAdmin ? 'block' : 'none';
   }
 
   // Ocultar Gestión de Datos a empleados normales
   const dataMgmtCard = document.getElementById('settings-data-mgmt-card');
   if (dataMgmtCard) {
-    dataMgmtCard.style.display = isSuperAdmin ? 'block' : 'none';
+    dataMgmtCard.style.display = isAdmin ? 'block' : 'none';
   }
 
   showApp();
