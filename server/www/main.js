@@ -23,12 +23,11 @@ let currentClientId = null; // ID del cliente actualmente visualizado en el moda
 let collectionsChartInstance = null;
 let statusChartInstance = null;
 
-// --- 2. PERSISTENCIA DE DATOS Y API ---
-
-// Si estamos en un dispositivo móvil (Capacitor usa http://localhost), apuntamos al servidor local en la red WiFi.
-// Reemplaza esta IP con la IP pública de tu VPS o servidor cuando vayas a producción.
-const IS_CAPACITOR = window.location.origin.includes('localhost') && !window.location.port; 
-const API_URL = window.PRESTAMOS_API_URL || (IS_CAPACITOR ? 'http://192.168.56.44:3000/api' : window.location.origin + '/api');
+// --- 2. API URL CONFIGURATION ---
+// En dispositivos móviles (APK) apuntamos al servidor público en Render.
+// En el navegador de escritorio usamos la URL del servidor local.
+const IS_CAPACITOR = !window.location.port && (window.location.protocol === 'capacitor:' || window.location.origin === 'http://localhost');
+const API_URL = window.PRESTAMOS_API_URL || (IS_CAPACITOR ? 'https://prestamos-app-final.onrender.com/api' : window.location.origin + '/api');
 
 // --- LIMPIEZA FORZADA DE CACHÉ Y SERVICE WORKER ---
 (function cleanCacheAndSW() {
