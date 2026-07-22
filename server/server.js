@@ -115,7 +115,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
 // Token auth middleware
 const authenticateToken = (req, res, next) => {
-  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health', '/saas/public-plans'];
+  const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/logout', '/health', '/saas/public-plans', '/debug-env'];
   // Permitir activación de plan sin JWT (ruta empieza con /activate)
   if (req.path.startsWith('/activate/')) return next();
   if (publicRoutes.includes(req.path) || req.method === 'OPTIONS') {
