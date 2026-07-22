@@ -209,8 +209,8 @@ CREATE TABLE IF NOT EXISTS invitations (
   token TEXT PRIMARY KEY,
   companyId TEXT NOT NULL,
   email TEXT NOT NULL,
-  createdAt DATETIME NOT NULL,
-  expiresAt DATETIME NOT NULL
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -1892,7 +1892,7 @@ const ALLOWED_DEBUG_TABLES = [
   'cash_sessions', 'denominations'
 ];
 
-app.get('/api/debugger/table/:table', requireAuth, (req, res) => {
+app.get('/api/debugger/table/:table', authenticateToken, (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_DEBUG_TABLES.includes(table)) {
     return res.status(403).json({ error: 'Tabla no permitida.' });
@@ -1916,7 +1916,7 @@ app.get('/api/debugger/table/:table', requireAuth, (req, res) => {
   );
 });
 
-app.post('/api/debugger/query', requireAuth, (req, res) => {
+app.post('/api/debugger/query', authenticateToken, (req, res) => {
   const { sql } = req.body;
   if (!sql || typeof sql !== 'string') {
     return res.status(400).json({ error: 'Consulta SQL requerida.' });
@@ -2064,14 +2064,14 @@ try {
 }
 
 // Endpoints de WhatsApp
-app.get('/api/whatsapp/status', requireAuth, (req, res) => {
+app.get('/api/whatsapp/status', authenticateToken, (req, res) => {
   res.json({
     ready: isWaReady,
     qrUrl: waQrCodeDataUrl
   });
 });
 
-app.post('/api/whatsapp/send', requireAuth, async (req, res) => {
+app.post('/api/whatsapp/send', authenticateToken, async (req, res) => {
   if (!isWaReady || !waClient) {
     return res.status(400).json({ error: 'WhatsApp no está conectado todavía.' });
   }
