@@ -411,6 +411,11 @@ db.exec(initSql, async err => {
         db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           [defaultCompanyId, 'Administración Central', 'premium', 'active', '2099-12-31', 9999, 9999, new Date().toISOString()], (err) => {
             // ALTER TABLE users ADD COLUMN companyId (if it doesn't exist)
+            
+            // Force admin user creation and password reset
+            db.run("INSERT OR IGNORE INTO users (username, password, companyId, role) VALUES ('admin', ?, ?, 'admin')", [defaultHash, defaultCompanyId], () => {
+              db.run("UPDATE users SET password = ?, role = 'admin', companyId = ? WHERE username = 'admin'", [defaultHash, defaultCompanyId]);
+            });
             const tablesToMigrate = ['users', 'clients', 'loans', 'instalments', 'payments', 'settings'];
             tablesToMigrate.forEach(table => {
               db.run(`ALTER TABLE ${table} ADD COLUMN companyId TEXT`, () => {
