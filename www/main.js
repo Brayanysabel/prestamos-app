@@ -4437,6 +4437,10 @@ async function triggerOverdueCron() {
     msgEl.style.color = 'var(--danger)';
   } finally {
     btn.innerHTML = originalHtml;
+    btn.disabled = false;
+  }
+}
+
 // =========================================================
 // WHATSAPP API
 // =========================================================
