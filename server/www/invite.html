@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Aceptar Invitación - PrestamosApp</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="index.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: var(--bg); font-family: 'Inter', system-ui, sans-serif; padding: 1rem;">
+
+  <div class="card" style="width: 100%; max-width: 400px; padding: 2rem;">
+    <div style="text-align: center; margin-bottom: 2rem;">
+      <i data-lucide="mail-check" style="width: 48px; height: 48px; color: var(--primary); margin-bottom: 1rem;"></i>
+      <h1 class="card-title" style="font-size: 1.5rem;">Aceptar Invitación</h1>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">Crea tu contraseña para acceder al sistema.</p>
+    </div>
+
+    <form id="accept-invite-form">
+      <div class="form-group">
+        <label for="invite-password">Nueva Contraseña</label>
+        <input type="password" id="invite-password" class="form-input" placeholder="••••••••" required minlength="6">
+      </div>
+      <div class="form-group">
+        <label for="invite-password-confirm">Confirmar Contraseña</label>
+        <input type="password" id="invite-password-confirm" class="form-input" placeholder="••••••••" required minlength="6">
+      </div>
+      
+      <div id="invite-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500; text-align: center;"></div>
+      
+      <button type="submit" class="btn btn-primary" style="width: 100%;">
+        Completar Registro
+      </button>
+    </form>
+    
+    <div style="text-align: center; margin-top: 1.5rem;">
+      <a href="login.html" style="color: var(--primary); text-decoration: none; font-size: 0.85rem;">Ir al Login</a>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    document.getElementById('accept-invite-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      
+      const pwd = document.getElementById('invite-password').value;
+      const pwdConfirm = document.getElementById('invite-password-confirm').value;
+      const msgEl = document.getElementById('invite-msg');
+      const btn = e.target.querySelector('button');
+
+      if (!token) {
+        msgEl.textContent = 'Token de invitación no válido o ausente.';
+        msgEl.style.color = 'var(--danger)';
+        return;
+      }
+
+      if (pwd !== pwdConfirm) {
+        msgEl.textContent = 'Las contraseñas no coinciden.';
+        msgEl.style.color = 'var(--danger)';
+        return;
+      }
+
+      msgEl.textContent = 'Registrando...';
+      msgEl.style.color = 'var(--text-muted)';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/users/accept-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pwd })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error en el servidor');
+        
+        msgEl.textContent = data.message;
+        msgEl.style.color = 'var(--success)';
+        
+        // Redirigir al login después de 2 segundos
+        setTimeout(() => {
+          window.location.href = 'login.html';
+        }, 2000);
+        
+      } catch (err) {
+        msgEl.textContent = err.message;
+        msgEl.style.color = 'var(--danger)';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

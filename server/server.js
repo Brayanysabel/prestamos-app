@@ -12,6 +12,27 @@ const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 
 const app = express();
+
+// LiveReload para entorno de desarrollo local
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const livereload = require('livereload');
+    const connectLiveReload = require('connect-livereload');
+    const liveReloadServer = livereload.createServer();
+    liveReloadServer.watch(path.resolve(__dirname, 'www'));
+    
+    // Middleware para inyectar el script de livereload en el HTML
+    app.use(connectLiveReload());
+    
+    liveReloadServer.server.once("connection", () => {
+      setTimeout(() => {
+        liveReloadServer.refresh("/");
+      }, 100);
+    });
+  } catch (e) {
+    console.log("LiveReload no disponible (modo producción o dependencias omitidas).");
+  }
+}
 dotenv.config({ path: path.resolve(__dirname, '../.env') });  // OK if file missing
 const PORT = process.env.PORT || 8080;
 const HOST = '0.0.0.0';
@@ -21,8 +42,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com"],
-      connectSrc: ["'self'", "https://unpkg.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://unpkg.com", "http://localhost:*"],
+      connectSrc: ["'self'", "https://unpkg.com", "ws://localhost:*", "http://localhost:*"],
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "https:", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
@@ -53,15 +74,42 @@ const loginLimiter = rateLimit({
 // Serve static files from the www directory
 // Serve static files from the www directory with caching for performance
 app.use(express.static(path.resolve(__dirname, './www'), {
-  maxAge: '1d',
-  setHeaders: (res, path) => {
-    if (path.endsWith('.html') || path.endsWith('sw.js')) {
-      res.setHeader('Cache-Control', 'public, max-age=0');
-    } else {
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-    }
+  maxAge: 0,
+  setHeaders: (res, filePath) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
   }
 }));
+
+// Ruta especial para limpiar la caché del navegador del usuario
+app.get('/reset', (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Limpiando Caché...</title></head>
+      <body style="font-family: sans-serif; text-align: center; margin-top: 50px; background: #09090e; color: white;">
+        <h2>Borrando caché antigua...</h2>
+        <script>
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for(let registration of registrations) {
+                registration.unregister();
+              }
+            });
+            caches.keys().then((keyList) => {
+              return Promise.all(keyList.map((key) => {
+                return caches.delete(key);
+              }));
+            });
+          }
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 1500);
+        </script>
+      </body>
+    </html>
+  `);
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || 'prestamos_super_secret_key_123!';
 
@@ -89,6 +137,40 @@ const authenticateToken = (req, res, next) => {
 };
 
 app.use('/api', authenticateToken);
+
+// Middleware: solo usuarios con role='admin' dentro de su empresa
+function requireAdmin(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autorizado' });
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acceso denegado. Solo el administrador puede realizar esta acción.' });
+  }
+  next();
+}
+
+// Middleware: valida límites de préstamos y usuarios según el plan
+async function requirePlanLimits(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'No autorizado' });
+  // El superadmin (comp_default) no tiene límites
+  if (req.user.isSuperAdmin) return next();
+
+  const planId = req.user.plan || 'basico';
+  
+  try {
+    // Para SQLite via dbWrapper, usamos una promesa (o envolvemos get en promesa)
+    const getPromise = (sql, params) => new Promise((resolve, reject) => {
+      db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+    });
+    
+    const plan = await getPromise('SELECT * FROM saas_plans WHERE id = ?', [planId]);
+    if (!plan) return next(); // Si el plan no existe, permitir o usar fallback
+    
+    req.planLimits = plan;
+    next();
+  } catch (err) {
+    console.error('Error en requirePlanLimits:', err);
+    res.status(500).json({ error: 'Error verificando límites del plan' });
+  }
+}
 
 
 // Initialize DB
@@ -121,6 +203,14 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT PRIMARY KEY,
   password TEXT NOT NULL,
   companyId TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS invitations (
+  token TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  email TEXT NOT NULL,
+  createdAt DATETIME NOT NULL,
+  expiresAt DATETIME NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -191,9 +281,95 @@ CREATE TABLE IF NOT EXISTS saas_plans (
   name TEXT NOT NULL,
   price REAL NOT NULL,
   max_users INTEGER NOT NULL,
-  max_loans INTEGER NOT NULL
+  max_loans INTEGER NOT NULL,
+  allow_documents BOOLEAN DEFAULT false,
+  allow_guarantees BOOLEAN DEFAULT false,
+  allow_debugger BOOLEAN DEFAULT false,
+  allow_whatsapp BOOLEAN DEFAULT false,
+  allow_finances BOOLEAN DEFAULT false,
+  allow_denominations BOOLEAN DEFAULT false,
+  allow_expenses BOOLEAN DEFAULT false,
+  allow_banks BOOLEAN DEFAULT false,
+  allow_cash BOOLEAN DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS guarantees (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  loanId TEXT NOT NULL,
+  guarantorName TEXT NOT NULL,
+  guarantorPhone TEXT,
+  guarantorId TEXT,
+  guarantorAddress TEXT,
+  notes TEXT,
+  createdAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  description TEXT NOT NULL,
+  amount REAL NOT NULL,
+  category TEXT NOT NULL DEFAULT 'general',
+  date TEXT NOT NULL,
+  notes TEXT,
+  createdAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  bankName TEXT NOT NULL,
+  accountNumber TEXT,
+  accountType TEXT DEFAULT 'corriente',
+  balance REAL NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bank_transactions (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  accountId TEXT NOT NULL,
+  type TEXT NOT NULL,
+  amount REAL NOT NULL,
+  description TEXT,
+  date TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (accountId) REFERENCES bank_accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS cash_sessions (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  openedAt TEXT NOT NULL,
+  closedAt TEXT,
+  openingBalance REAL NOT NULL DEFAULT 0,
+  closingBalance REAL,
+  expectedBalance REAL,
+  difference REAL,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'open'
+);
+
+CREATE TABLE IF NOT EXISTS denominations (
+  id TEXT PRIMARY KEY,
+  companyId TEXT NOT NULL,
+  sessionDate TEXT NOT NULL,
+  d2000 INTEGER DEFAULT 0,
+  d1000 INTEGER DEFAULT 0,
+  d500 INTEGER DEFAULT 0,
+  d200 INTEGER DEFAULT 0,
+  d100 INTEGER DEFAULT 0,
+  d50 INTEGER DEFAULT 0,
+  d25 INTEGER DEFAULT 0,
+  d10 INTEGER DEFAULT 0,
+  d5 INTEGER DEFAULT 0,
+  d1 INTEGER DEFAULT 0,
+  totalCash REAL NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL
 );
 `;
+
 
 db.exec(initSql, async err => {
   console.log("Initializing DB schema...");
@@ -204,11 +380,11 @@ db.exec(initSql, async err => {
     db.get("SELECT COUNT(*) as count FROM saas_plans", (err, row) => {
       console.log("Checking saas_plans...");
       if (!err && row.count === 0) {
-        const stmt = db.prepare("INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)");
-        stmt.run('principiante', 'Principiante', 900, 1, 20);
-        stmt.run('basico', 'Básico', 1500, 2, 50);
-        stmt.run('intermedio', 'Intermedio', 2000, 5, 200);
-        stmt.run('premium', 'Premium', 2500, 10, 999999);
+        const stmt = db.prepare("INSERT INTO saas_plans (id, name, price, max_users, max_loans, allow_documents, allow_guarantees, allow_debugger, allow_whatsapp, allow_finances, allow_denominations, allow_expenses, allow_banks, allow_cash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        stmt.run('principiante', 'Principiante', 900, 1, 100, false, false, false, false, false, false, false, false, false);
+        stmt.run('basico', 'Básico', 1500, 2, 500, true, true, true, true, false, false, false, false, false);
+        stmt.run('intermedio', 'Intermedio', 2000, 4, 1000, true, true, true, true, true, true, true, true, true);
+        stmt.run('premium', 'Premium', 2500, 100, 999999, true, true, true, true, true, true, true, true, true);
         stmt.finalize();
       }
     });
@@ -222,8 +398,8 @@ db.exec(initSql, async err => {
         db.run("INSERT OR IGNORE INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           [defaultCompanyId, 'Administración Central', 'premium', 'active', '2099-12-31', 9999, 9999, new Date().toISOString()], (err) => {
             if (!err) {
-              const stmt = db.prepare("INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)");
-              stmt.run("admin", defaultHash, defaultCompanyId);
+              const stmt = db.prepare("INSERT INTO users (username, password, companyId, role) VALUES (?, ?, ?, ?)");
+              stmt.run("admin", defaultHash, defaultCompanyId, 'admin');
               stmt.finalize();
               console.log("Seeded default admin user and company.");
             }
@@ -250,6 +426,11 @@ db.exec(initSql, async err => {
             db.run("ALTER TABLE users ADD COLUMN resetToken TEXT", () => {});
             db.run("ALTER TABLE users ADD COLUMN resetTokenExpires TEXT", () => {});
             
+            // Añadir columna role (admin / employee)
+            db.run("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'", () => {
+              // El primer usuario (admin) ya tiene role=admin por DEFAULT
+            });
+            
             // Añadir columnas KYC
             db.run("ALTER TABLE clients ADD COLUMN kycStatus TEXT DEFAULT 'pending'", () => {});
             db.run("ALTER TABLE clients ADD COLUMN idDocumentUrl TEXT", () => {});
@@ -269,11 +450,26 @@ db.exec(initSql, async err => {
             db.run("ALTER TABLE companies ADD COLUMN activation_token TEXT", () => {});
             db.run("ALTER TABLE companies ADD COLUMN activation_expires TEXT", () => {});
             db.run("ALTER TABLE companies ADD COLUMN pending_plan TEXT", () => {});
+
+            // Añadir columnas de características a saas_plans
+            const planFeatures = [
+              'allow_documents', 'allow_guarantees', 'allow_debugger', 'allow_whatsapp',
+              'allow_finances', 'allow_denominations', 'allow_expenses', 'allow_banks', 'allow_cash'
+            ];
+            planFeatures.forEach(col => {
+              db.run(`ALTER TABLE saas_plans ADD COLUMN ${col} BOOLEAN DEFAULT false`, () => {});
+            });
+            // Asegurar que los planes coincidan con la configuración actual (para bases de datos existentes)
+            db.run("UPDATE saas_plans SET price=900, max_users=1, max_loans=100, allow_documents=false, allow_guarantees=false, allow_debugger=false, allow_whatsapp=false, allow_finances=false, allow_denominations=false, allow_expenses=false, allow_banks=false, allow_cash=false WHERE id='principiante'");
+            db.run("UPDATE saas_plans SET price=1500, max_users=2, max_loans=500, allow_documents=true, allow_guarantees=true, allow_debugger=true, allow_whatsapp=true, allow_finances=false, allow_denominations=false, allow_expenses=false, allow_banks=false, allow_cash=false WHERE id='basico'");
+            db.run("UPDATE saas_plans SET price=2000, max_users=4, max_loans=1000, allow_documents=true, allow_guarantees=true, allow_debugger=true, allow_whatsapp=true, allow_finances=true, allow_denominations=true, allow_expenses=true, allow_banks=true, allow_cash=true WHERE id='intermedio'");
+            db.run("INSERT INTO saas_plans (id, name, price, max_users, max_loans, allow_documents, allow_guarantees, allow_debugger, allow_whatsapp, allow_finances, allow_denominations, allow_expenses, allow_banks, allow_cash) VALUES ('premium', 'Premium', 2500, 100, 999999, true, true, true, true, true, true, true, true, true) ON CONFLICT(id) DO UPDATE SET price=2500, max_users=100, max_loans=999999, allow_documents=true, allow_guarantees=true, allow_debugger=true, allow_whatsapp=true, allow_finances=true, allow_denominations=true, allow_expenses=true, allow_banks=true, allow_cash=true");
+
           }
         );
 
-        // Migration: If any password does NOT start with '$2b$' (bcrypt signature), update it to 'admin' hashed
-        db.run("UPDATE users SET password = ? WHERE password NOT LIKE ?", [defaultHash, '$2b$%'], function(err) {
+        // Migration: If any password does NOT start with '$2' (bcrypt signature), update it to 'admin' hashed
+        db.run("UPDATE users SET password = ? WHERE password NOT LIKE ?", [defaultHash, '$2%'], function(err) {
           if (!err && this.changes > 0) {
             console.log(`Migrated ${this.changes} legacy plaintext passwords to secure bcrypt hashes.`);
           }
@@ -386,31 +582,34 @@ app.post('/api/signup', async (req, res) => {
   username = username.trim();
   const companyId = 'comp_' + Math.random().toString(36).substring(2, 10);
   const hash = await bcrypt.hash(password, 10);
-  
-  // Set limits based on plan
-  let max_loans = 100, max_users = 1;
-  if (plan === 'principiante') { max_loans = 100; max_users = 1; }
-  else if (plan === 'basico') { max_loans = 500; max_users = 2; }
-  else if (plan === 'intermedio') { max_loans = 1000; max_users = 4; }
-  else if (plan === 'premium') { max_loans = 100000; max_users = 100; } // Plan Premium
-  else { plan = 'basico'; max_loans = 500; max_users = 2; }
-  
-  db.get('SELECT username FROM users WHERE username = ?', [username], (err, row) => {
-    if (row) return res.status(400).json({ error: 'El usuario ya existe' });
-    
-    const validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const stmtC = db.prepare('INSERT INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    stmtC.run(companyId, companyName, plan, 'active', validUntil, max_loans, max_users, new Date().toISOString(), (err) => {
-      if (err) return res.status(500).json({ error: err.message });
+
+  // Obtener límites desde la tabla saas_plans (no hardcodeados)
+  db.get('SELECT * FROM saas_plans WHERE id = ?', [plan || 'basico'], (err, planRow) => {
+    if (err || !planRow) {
+      // Fallback a valores por defecto si el plan no existe
+      planRow = { id: 'basico', max_loans: 500, max_users: 2 };
+    }
+    const max_loans = planRow.max_loans;
+    const max_users = planRow.max_users;
+    const planId    = planRow.id;
+
+    db.get('SELECT username FROM users WHERE username = ?', [username], (err, row) => {
+      if (row) return res.status(400).json({ error: 'El usuario ya existe' });
       
-      const stmtU = db.prepare('INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)');
-      stmtU.run(username, hash, companyId, (err) => {
-         if (err) return res.status(500).json({ error: err.message });
-         res.json({ message: 'Empresa registrada correctamente', companyId });
+      const validUntil = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const stmtC = db.prepare('INSERT INTO companies (id, name, plan, status, validUntil, max_loans, max_users, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      stmtC.run(companyId, companyName, planId, 'active', validUntil, max_loans, max_users, new Date().toISOString(), (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        
+        const stmtU = db.prepare('INSERT INTO users (username, password, companyId, role) VALUES (?, ?, ?, ?)');
+        stmtU.run(username, hash, companyId, 'admin', (err) => {
+           if (err) return res.status(500).json({ error: err.message });
+           res.json({ message: 'Empresa registrada correctamente', companyId, plan: planId });
+        });
+        stmtU.finalize();
       });
-      stmtU.finalize();
+      stmtC.finalize();
     });
-    stmtC.finalize();
   });
 });
 
@@ -425,7 +624,13 @@ app.get('/api/settings', (req, res) => {
   });
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', requireAdmin, (req, res) => {
+  // Verificar contraseña de eliminación definida en la variable de entorno
+  const DELETE_CLIENT_PASSWORD = process.env.DELETE_CLIENT_PASSWORD || 'admin-delete-pass';
+  if (req.body.password !== DELETE_CLIENT_PASSWORD) {
+    return res.status(403).json({ error: 'Contraseña de eliminación incorrecta' });
+  }
+  // Continuar con el borrado en cascada
   const username = req.user?.username;
   if (!username) return res.status(401).json({ error: 'No autorizado' });
 
@@ -480,22 +685,66 @@ app.post('/api/login', (req, res) => {
       }
     }
     
-    const isMatch = await bcrypt.compare(password, row.password);
-    if (!isMatch) {
+    // Si la contraseña almacenada es un hash (empieza con $2)
+    let match = false;
+    if (row.password.startsWith('$2')) {
+      match = await bcrypt.compare(password, row.password);
+    } else {
+      // Legacy check para contraseñas antiguas que aún no han sido migradas
+      match = (password === row.password);
+    }
+    if (!match) {
       console.log(`[LOGIN FAILED] Password mismatch`);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
     
     console.log(`[LOGIN SUCCESS] User: ${username}`);
+    // Determinar rol en el JWT:
+    // - superAdmin (comp_default) → siempre 'admin'
+    // - Usuario con role explícito en DB → usar ese role
+    // - Usuario con role null (migración) → 'employee' (por seguridad)
+    let userRole;
+    if (isSuperAdmin) {
+      userRole = 'admin';
+    } else if (row.role) {
+      userRole = row.role;
+    } else {
+      // Usuarios legacy sin role: asignar 'admin' solo si es el primer/único usuario de la empresa
+      // Para todos los demás, employee (más seguro)
+      userRole = 'employee';
+      // Actualizar en la DB para que el próximo login sea consistente
+      db.run("UPDATE users SET role = 'employee' WHERE username = ? AND role IS NULL", [row.username]);
+    }
     // Generate JWT token
-    const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan, isSuperAdmin }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ username: row.username, companyId: row.companyId, plan: row.plan, isSuperAdmin, role: userRole }, JWT_SECRET, { expiresIn: '24h' });
     // Set HttpOnly cookie for authentication
     res.cookie('auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
     });
-    res.json({ username, isSuperAdmin, token });
+    
+    // Buscar los detalles del plan para devolver los accesos (features)
+    const planId = row.plan || 'basico';
+    db.get("SELECT * FROM saas_plans WHERE id = ?", [planId], (err, planData) => {
+      let planFeatures = {};
+      if (!err && planData) {
+        planFeatures = {
+          allow_documents: !!planData.allow_documents,
+          allow_guarantees: !!planData.allow_guarantees,
+          allow_debugger: !!planData.allow_debugger,
+          allow_whatsapp: !!planData.allow_whatsapp,
+          allow_finances: !!planData.allow_finances,
+          allow_denominations: !!planData.allow_denominations,
+          allow_expenses: !!planData.allow_expenses,
+          allow_banks: !!planData.allow_banks,
+          allow_cash: !!planData.allow_cash,
+          max_loans: planData.max_loans,
+          max_users: planData.max_users
+        };
+      }
+      res.json({ username, isSuperAdmin, role: userRole, token, planFeatures });
+    });
   });
 });
 
@@ -613,7 +862,7 @@ app.put('/api/users/me', async (req, res) => {
 });
 
 // Respaldo por Correo
-app.post('/api/backup/email', (req, res) => {
+app.post('/api/backup/email', requireAdmin, (req, res) => {
   const { toEmail, smtpUser, smtpPass } = req.body;
   if (!toEmail) return res.status(400).json({ error: 'Correo destino es requerido' });
   if (!smtpUser || !smtpPass) return res.status(400).json({ error: 'Credenciales SMTP (Remitente) son requeridas' });
@@ -698,20 +947,37 @@ app.post('/api/notify', authenticateToken, async (req, res) => {
 
 // Users Management
 app.get('/api/users', (req, res) => {
-  db.all('SELECT username, companyId FROM users WHERE companyId = ?', [req.user.companyId], (err, rows) => {
+  db.all('SELECT username, companyId, role FROM users WHERE companyId = ?', [req.user.companyId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
 });
 
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', requireAdmin, requirePlanLimits, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username y password requeridos' });
   
+  if (req.planLimits) {
+    try {
+      const getPromise = (sql, params) => new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+      });
+      const result = await getPromise('SELECT COUNT(*) as count FROM users WHERE companyId = ?', [req.user.companyId]);
+      if (result.count >= req.planLimits.max_users) {
+        return res.status(400).json({ error: `Límite de usuarios (${req.planLimits.max_users}) alcanzado. Por favor, mejore su plan.` });
+      }
+    } catch (e) {
+      console.error('Error checking users limit', e);
+      return res.status(500).json({ error: 'Error verificando límites' });
+    }
+  }
+
+  
   try {
     const hash = await bcrypt.hash(password, 10);
-    db.run('INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)',
-      [username, hash, req.user.companyId],
+    // Los usuarios creados por el admin tienen rol 'employee'
+    db.run('INSERT INTO users (username, password, companyId, role) VALUES (?, ?, ?, ?)',
+      [username, hash, req.user.companyId, 'employee'],
       function (err) {
         if (err) {
           if (err.message.includes('UNIQUE constraint failed') || err.code === '23505') {
@@ -727,7 +993,143 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Clients
+// Eliminar usuario (solo admin, no puede eliminarse a sí mismo)
+app.delete('/api/users/:username', requireAdmin, (req, res) => {
+  const targetUsername = req.params.username;
+  const currentUsername = req.user.username;
+
+  if (targetUsername === currentUsername) {
+    return res.status(400).json({ error: 'No puedes eliminarte a ti mismo.' });
+  }
+
+  db.run(
+    'DELETE FROM users WHERE username = ? AND companyId = ?',
+    [targetUsername, req.user.companyId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (this.changes === 0) return res.status(404).json({ error: 'Usuario no encontrado en tu empresa.' });
+      res.json({ message: `Usuario "${targetUsername}" eliminado correctamente.` });
+    }
+  );
+});
+
+// ==========================================
+// INVITACIONES DE USUARIOS POR EMAIL
+// ==========================================
+
+// 1. Crear invitación y enviar email
+app.post('/api/users/invite', requireAdmin, requirePlanLimits, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Se requiere un email válido' });
+
+  if (req.planLimits) {
+    try {
+      const getPromise = (sql, params) => new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+      });
+      const result = await getPromise('SELECT COUNT(*) as count FROM users WHERE companyId = ?', [req.user.companyId]);
+      if (result.count >= req.planLimits.max_users) {
+        return res.status(400).json({ error: `Límite de usuarios (${req.planLimits.max_users}) alcanzado. Mejore su plan.` });
+      }
+    } catch (e) {
+      return res.status(500).json({ error: 'Error verificando límites' });
+    }
+  }
+
+  // Comprobar si el email ya existe como usuario
+  db.get('SELECT username FROM users WHERE username = ?', [email], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (row) return res.status(400).json({ error: 'Ya existe un usuario con ese email' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48 horas
+    
+    db.run(
+      'INSERT INTO invitations (token, companyId, email, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?)',
+      [token, req.user.companyId, email, new Date().toISOString(), expires],
+      (err) => {
+        if (err) return res.status(500).json({ error: 'Error al generar la invitación' });
+
+        const inviteLink = `${req.protocol}://${req.get('host')}/invite.html?token=${token}`;
+        
+        // Simular o Enviar email real
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER || 'no-reply@prestamosapp.com',
+            pass: process.env.EMAIL_PASS || 'tucontraseña'
+          }
+        });
+
+        const mailOptions = {
+          from: process.env.EMAIL_USER || 'no-reply@prestamosapp.com',
+          to: email,
+          subject: 'Invitación para unirte a PrestamosApp',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+              <div style="background-color: #2563eb; color: white; padding: 20px; text-align: center;">
+                <h2>¡Has sido invitado a PrestamosApp!</h2>
+              </div>
+              <div style="padding: 20px;">
+                <p>Hola,</p>
+                <p>El administrador de la empresa te ha invitado a formar parte del sistema de gestión de préstamos.</p>
+                <p>Por favor, haz clic en el siguiente botón para aceptar la invitación y crear tu contraseña:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${inviteLink}" style="background-color: #2563eb; color: white; text-decoration: none; padding: 12px 24px; border-radius: 4px; font-weight: bold; display: inline-block;">Aceptar Invitación</a>
+                </div>
+                <p style="font-size: 12px; color: #666; margin-top: 30px; text-align: center;">Este enlace expira en 48 horas.</p>
+              </div>
+            </div>
+          `
+        };
+
+        if (process.env.EMAIL_USER) {
+          transporter.sendMail(mailOptions, (error, info) => {
+            if (error) console.error("Error enviando email: ", error);
+            res.json({ message: 'Invitación enviada al correo.', link: inviteLink }); // Se devuelve el link para tests locales
+          });
+        } else {
+          // Entorno local sin credenciales
+          res.json({ message: 'Invitación generada (Modo desarrollo). Copia este link para probar.', link: inviteLink });
+        }
+      }
+    );
+  });
+});
+
+// 2. Aceptar Invitación (Establecer contraseña y crear usuario real)
+app.post('/api/users/accept-invite', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: 'Token y contraseña son requeridos' });
+
+  db.get('SELECT * FROM invitations WHERE token = ?', [token], async (err, invite) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!invite) return res.status(400).json({ error: 'Invitación inválida o no encontrada' });
+    if (new Date() > new Date(invite.expiresAt)) return res.status(400).json({ error: 'La invitación ha expirado' });
+
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        // Crear usuario usando el email como username
+        db.run('INSERT INTO users (username, password, companyId) VALUES (?, ?, ?)', [invite.email, hashedPassword, invite.companyId]);
+        
+        // Eliminar la invitación
+        db.run('DELETE FROM invitations WHERE token = ?', [token]);
+        
+        db.run('COMMIT', (err) => {
+          if (err) return res.status(500).json({ error: 'Error finalizando el registro' });
+          res.json({ message: 'Cuenta creada exitosamente. Ya puedes iniciar sesión.', username: invite.email });
+        });
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+});
+
 app.get('/api/clients', (req, res) => {
   db.all('SELECT * FROM clients WHERE companyId = ?', [req.user.companyId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -747,6 +1149,36 @@ app.post('/api/clients', (req, res) => {
   stmt.finalize();
 });
 
+// Importación Masiva de Clientes
+app.post('/api/clients/bulk', (req, res) => {
+  const clients = req.body.clients;
+  if (!Array.isArray(clients)) return res.status(400).json({ error: 'Se esperaba un array de clientes' });
+
+  const createdAt = new Date().toISOString();
+  let count = 0;
+  
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION");
+    const stmt = db.prepare('INSERT INTO clients (id, companyId, name, phone, email, notes, createdAt, kycStatus) VALUES (?,?,?,?,?,?,?,?)');
+    
+    clients.forEach(c => {
+      const id = generateId('cli');
+      const name = c.name || 'Sin Nombre';
+      const phone = c.phone || '';
+      const email = c.email || '';
+      const notes = c.notes || 'Importado vía CSV';
+      stmt.run(id, req.user.companyId, name, phone, email, notes, createdAt, 'pending');
+      count++;
+    });
+    
+    stmt.finalize();
+    db.run("COMMIT", err => {
+      if (err) return res.status(500).json({ error: 'Error importando clientes: ' + err.message });
+      res.json({ message: `Se importaron ${count} clientes exitosamente.` });
+    });
+  });
+});
+
 // Actualizar KYC de un cliente (Simulación)
 app.post('/api/clients/:id/kyc', (req, res) => {
   const { idDocumentUrl, selfieUrl } = req.body;
@@ -760,15 +1192,14 @@ app.post('/api/clients/:id/kyc', (req, res) => {
 });
 
 // Borrar Cliente Seguro
-app.delete('/api/clients/:id', (req, res) => {
-  const username = req.user?.username;
+app.delete('/api/clients/:id', requireAdmin, (req, res) => {
   const password = req.body.password;
   const clientId = req.params.id;
 
-  if (!username) return res.status(401).json({ error: 'No autorizado' });
   if (!password) return res.status(400).json({ error: 'Se requiere contraseña para borrar' });
 
-  db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
+
+  db.get("SELECT * FROM users WHERE username = ?", [req.user.username], async (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!row) return res.status(403).json({ error: 'Usuario no encontrado' });
     
@@ -815,22 +1246,18 @@ app.get('/api/loans', (req, res) => {
   });
 });
 
-app.post('/api/loans', (req, res) => {
+app.post('/api/loans', requirePlanLimits, (req, res) => {
   const loan = req.body; // expect full loan object
   const companyId = req.user.companyId;
 
-  db.get('SELECT max_loans FROM companies WHERE id = ?', [companyId], (err, compRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!compRow) return res.status(404).json({ error: 'Empresa no encontrada' });
+  const maxLoans = req.planLimits ? req.planLimits.max_loans : 500; // fallback if no plan limits
 
-    const maxLoans = compRow.max_loans;
+  db.get('SELECT COUNT(*) as count FROM loans WHERE companyId = ?', [companyId], (err, countRow) => {
+    if (err) return res.status(500).json({ error: err.message });
     
-    db.get('SELECT COUNT(*) as count FROM loans WHERE companyId = ?', [companyId], (err, countRow) => {
-      if (err) return res.status(500).json({ error: err.message });
-      
-      if (countRow.count >= maxLoans) {
-        return res.status(403).json({ error: 'Has alcanzado el límite de préstamos (' + maxLoans + ') de tu plan actual. Por favor, mejora tu plan.' });
-      }
+    if (countRow.count >= maxLoans) {
+      return res.status(403).json({ error: 'Has alcanzado el límite de préstamos (' + maxLoans + ') de tu plan actual. Por favor, mejora tu plan.' });
+    }
 
       const stmt = db.prepare(`INSERT INTO loans (id, companyId, clientId, clientName, amount, rate, rateType, term, frequency, type, startDate, totalPayable, interestAmount, status, remainingBalance) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       stmt.run(
@@ -862,11 +1289,10 @@ app.post('/api/loans', (req, res) => {
       );
       stmt.finalize();
     });
-  });
 });
 
 // Borrar Préstamo Seguro
-app.delete('/api/loans/:id', (req, res) => {
+app.delete('/api/loans/:id', requireAdmin, (req, res) => {
   const username = req.user?.username;
   const password = req.body.password;
   const loanId = req.params.id;
@@ -1006,15 +1432,41 @@ app.post('/api/saas/payments', requireSuperAdmin, (req, res) => {
 
 app.put('/api/saas/companies/:id/status', requireSuperAdmin, (req, res) => {
   const targetCompanyId = req.params.id;
-  const { status } = req.body; // 'active' or 'suspended'
-  
+  const { status, months } = req.body;
+
   if (status !== 'active' && status !== 'suspended') {
     return res.status(400).json({ error: 'Estado inválido' });
   }
 
-  db.run('UPDATE companies SET status = ? WHERE id = ?', [status, targetCompanyId], function(err) {
+  if (status === 'suspended') {
+    db.run('UPDATE companies SET status = ? WHERE id = ?', ['suspended', targetCompanyId], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Empresa suspendida correctamente' });
+    });
+    return;
+  }
+
+  // Activar: calcular validUntil extendiendo desde hoy o desde validUntil vigente
+  const numMonths = parseInt(months) || 1;
+  db.get('SELECT validUntil FROM companies WHERE id = ?', [targetCompanyId], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Estado actualizado correctamente' });
+
+    const today = new Date();
+    let base = new Date(today);
+    if (row && row.validUntil) {
+      const currentValid = new Date(row.validUntil);
+      if (currentValid > today) base = currentValid; // extender desde la fecha vigente
+    }
+    base.setMonth(base.getMonth() + numMonths);
+    const newValidUntil = base.toISOString().split('T')[0];
+
+    db.run('UPDATE companies SET status = ?, validUntil = ? WHERE id = ?',
+      ['active', newValidUntil, targetCompanyId],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Empresa activada correctamente', newValidUntil });
+      }
+    );
   });
 });
 
@@ -1093,18 +1545,43 @@ app.get('/api/saas/plans', requireSuperAdmin, (req, res) => {
 });
 
 app.post('/api/saas/plans', requireSuperAdmin, (req, res) => {
-  const { id, name, price, max_users, max_loans } = req.body;
-  db.run('INSERT INTO saas_plans (id, name, price, max_users, max_loans) VALUES (?, ?, ?, ?, ?)', 
-    [id, name, price, max_users, max_loans], function(err) {
+  const { 
+    id, name, price, max_users, max_loans, 
+    allow_documents, allow_guarantees, allow_debugger, allow_whatsapp, 
+    allow_finances, allow_denominations, allow_expenses, allow_banks, allow_cash 
+  } = req.body;
+  
+  db.run(`INSERT INTO saas_plans 
+    (id, name, price, max_users, max_loans, allow_documents, allow_guarantees, allow_debugger, allow_whatsapp, allow_finances, allow_denominations, allow_expenses, allow_banks, allow_cash) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
+    [
+      id, name, price, max_users, max_loans,
+      allow_documents||0, allow_guarantees||0, allow_debugger||0, allow_whatsapp||0,
+      allow_finances||0, allow_denominations||0, allow_expenses||0, allow_banks||0, allow_cash||0
+    ], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: 'Plan creado', id });
   });
 });
 
 app.put('/api/saas/plans/:id', requireSuperAdmin, (req, res) => {
-  const { name, price, max_users, max_loans } = req.body;
-  db.run('UPDATE saas_plans SET name = ?, price = ?, max_users = ?, max_loans = ? WHERE id = ?', 
-    [name, price, max_users, max_loans, req.params.id], function(err) {
+  const { 
+    name, price, max_users, max_loans,
+    allow_documents, allow_guarantees, allow_debugger, allow_whatsapp, 
+    allow_finances, allow_denominations, allow_expenses, allow_banks, allow_cash
+  } = req.body;
+
+  db.run(`UPDATE saas_plans SET 
+    name = ?, price = ?, max_users = ?, max_loans = ?,
+    allow_documents = ?, allow_guarantees = ?, allow_debugger = ?, allow_whatsapp = ?,
+    allow_finances = ?, allow_denominations = ?, allow_expenses = ?, allow_banks = ?, allow_cash = ?
+    WHERE id = ?`, 
+    [
+      name, price, max_users, max_loans,
+      allow_documents||0, allow_guarantees||0, allow_debugger||0, allow_whatsapp||0,
+      allow_finances||0, allow_denominations||0, allow_expenses||0, allow_banks||0, allow_cash||0,
+      req.params.id
+    ], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: 'Plan actualizado' });
   });
@@ -1129,8 +1606,490 @@ app.get('/api/backup/download', (req, res) => {
   res.download(dbPath, `respaldo_prestamos_${new Date().toISOString().split('T')[0]}.db`);
 });
 
+// ============================================================
+// GARANTÍAS
+// ============================================================
+app.get('/api/guarantees', (req, res) => {
+  const { loanId } = req.query;
+  const sql = loanId
+    ? 'SELECT * FROM guarantees WHERE companyId = ? AND loanId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM guarantees WHERE companyId = ? ORDER BY createdAt DESC';
+  const params = loanId ? [req.user.companyId, loanId] : [req.user.companyId];
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/guarantees', (req, res) => {
+  const { loanId, guarantorName, guarantorPhone, guarantorId, guarantorAddress, notes } = req.body;
+  if (!loanId || !guarantorName) return res.status(400).json({ error: 'loanId y guarantorName son requeridos' });
+  const id = 'guar_' + Date.now() + Math.random().toString(36).slice(2, 6);
+  db.run(
+    'INSERT INTO guarantees (id, companyId, loanId, guarantorName, guarantorPhone, guarantorId, guarantorAddress, notes, createdAt) VALUES (?,?,?,?,?,?,?,?,?)',
+    [id, req.user.companyId, loanId, guarantorName, guarantorPhone||'', guarantorId||'', guarantorAddress||'', notes||'', new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Garantía registrada', id });
+    }
+  );
+});
+
+app.delete('/api/guarantees/:id', requireAdmin, (req, res) => {
+  db.run('DELETE FROM guarantees WHERE id = ? AND companyId = ?', [req.params.id, req.user.companyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Garantía eliminada' });
+  });
+});
+
+// ============================================================
+// GASTOS
+// ============================================================
+app.get('/api/expenses', (req, res) => {
+  db.all('SELECT * FROM expenses WHERE companyId = ? ORDER BY date DESC', [req.user.companyId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/expenses', requireAdmin, (req, res) => {
+  const { description, amount, category, date, notes } = req.body;
+  if (!description || !amount || !date) return res.status(400).json({ error: 'description, amount y date son requeridos' });
+  const id = 'exp_' + Date.now() + Math.random().toString(36).slice(2, 6);
+  db.run(
+    'INSERT INTO expenses (id, companyId, description, amount, category, date, notes, createdAt) VALUES (?,?,?,?,?,?,?,?)',
+    [id, req.user.companyId, description, parseFloat(amount), category||'general', date, notes||'', new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Gasto registrado', id });
+    }
+  );
+});
+
+app.delete('/api/expenses/:id', requireAdmin, (req, res) => {
+  db.run('DELETE FROM expenses WHERE id = ? AND companyId = ?', [req.params.id, req.user.companyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Gasto eliminado' });
+  });
+});
+
+// ============================================================
+// BANCOS
+// ============================================================
+app.get('/api/banks', (req, res) => {
+  db.all('SELECT * FROM bank_accounts WHERE companyId = ? ORDER BY bankName', [req.user.companyId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/banks', requireAdmin, (req, res) => {
+  const { bankName, accountNumber, accountType, balance } = req.body;
+  if (!bankName) return res.status(400).json({ error: 'bankName es requerido' });
+  const id = 'bank_' + Date.now() + Math.random().toString(36).slice(2, 6);
+  db.run(
+    'INSERT INTO bank_accounts (id, companyId, bankName, accountNumber, accountType, balance, createdAt) VALUES (?,?,?,?,?,?,?)',
+    [id, req.user.companyId, bankName, accountNumber||'', accountType||'corriente', parseFloat(balance||0), new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Cuenta bancaria creada', id });
+    }
+  );
+});
+
+app.put('/api/banks/:id', requireAdmin, (req, res) => {
+  const { bankName, accountNumber, accountType, balance } = req.body;
+  db.run(
+    'UPDATE bank_accounts SET bankName=?, accountNumber=?, accountType=?, balance=? WHERE id=? AND companyId=?',
+    [bankName, accountNumber, accountType, parseFloat(balance||0), req.params.id, req.user.companyId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Cuenta actualizada' });
+    }
+  );
+});
+
+app.delete('/api/banks/:id', requireAdmin, (req, res) => {
+  db.run('DELETE FROM bank_accounts WHERE id=? AND companyId=?', [req.params.id, req.user.companyId], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Cuenta eliminada' });
+  });
+});
+
+app.get('/api/bank-transactions', (req, res) => {
+  const { accountId } = req.query;
+  const sql = accountId
+    ? 'SELECT * FROM bank_transactions WHERE companyId=? AND accountId=? ORDER BY date DESC LIMIT 100'
+    : 'SELECT * FROM bank_transactions WHERE companyId=? ORDER BY date DESC LIMIT 100';
+  const params = accountId ? [req.user.companyId, accountId] : [req.user.companyId];
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+app.post('/api/bank-transactions', requireAdmin, (req, res) => {
+  const { accountId, type, amount, description, date } = req.body;
+  if (!accountId || !type || !amount) return res.status(400).json({ error: 'accountId, type y amount son requeridos' });
+  const id = 'btx_' + Date.now() + Math.random().toString(36).slice(2, 6);
+  const amt = parseFloat(amount);
+  const balanceDelta = (type === 'deposito' || type === 'ingreso') ? amt : -amt;
+  db.run(
+    'INSERT INTO bank_transactions (id, companyId, accountId, type, amount, description, date, createdAt) VALUES (?,?,?,?,?,?,?,?)',
+    [id, req.user.companyId, accountId, type, amt, description||'', date||new Date().toISOString().split('T')[0], new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      db.run('UPDATE bank_accounts SET balance = balance + ? WHERE id=? AND companyId=?', [balanceDelta, accountId, req.user.companyId]);
+      res.json({ message: 'Movimiento registrado', id });
+    }
+  );
+});
+
+// ============================================================
+// CAJA
+// ============================================================
+app.get('/api/cash/current', (req, res) => {
+  db.get("SELECT * FROM cash_sessions WHERE companyId=? AND status='open' ORDER BY openedAt DESC LIMIT 1", [req.user.companyId], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(row || null);
+  });
+});
+
+app.post('/api/cash/open', requireAdmin, (req, res) => {
+  const { openingBalance } = req.body;
+  db.get("SELECT id FROM cash_sessions WHERE companyId=? AND status='open'", [req.user.companyId], (err, existing) => {
+    if (existing) return res.status(400).json({ error: 'Ya existe una caja abierta. Ciérrela antes de abrir una nueva.' });
+    const id = 'cash_' + Date.now();
+    db.run(
+      'INSERT INTO cash_sessions (id, companyId, openedAt, openingBalance, status) VALUES (?,?,?,?,?)',
+      [id, req.user.companyId, new Date().toISOString(), parseFloat(openingBalance||0), 'open'],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Caja abierta', id });
+      }
+    );
+  });
+});
+
+app.put('/api/cash/close', requireAdmin, (req, res) => {
+  const { closingBalance, notes } = req.body;
+  db.get("SELECT * FROM cash_sessions WHERE companyId=? AND status='open' ORDER BY openedAt DESC LIMIT 1", [req.user.companyId], (err, session) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!session) return res.status(404).json({ error: 'No hay caja abierta' });
+    db.get(
+      "SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE companyId=? AND date >= ?",
+      [req.user.companyId, session.openedAt.split('T')[0]],
+      (err, payRow) => {
+        const expected = parseFloat(session.openingBalance) + (payRow?.total || 0);
+        const closing = parseFloat(closingBalance || 0);
+        const difference = closing - expected;
+        db.run(
+          "UPDATE cash_sessions SET status='closed', closedAt=?, closingBalance=?, expectedBalance=?, difference=?, notes=? WHERE id=?",
+          [new Date().toISOString(), closing, expected, difference, notes||'', session.id],
+          function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'Caja cerrada', expected, difference });
+          }
+        );
+      }
+    );
+  });
+});
+
+app.get('/api/cash/history', (req, res) => {
+  db.all('SELECT * FROM cash_sessions WHERE companyId=? ORDER BY openedAt DESC LIMIT 30', [req.user.companyId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+// ============================================================
+// DENOMINACIONES
+// ============================================================
+app.post('/api/denominations', requireAdmin, (req, res) => {
+  const { d2000,d1000,d500,d200,d100,d50,d25,d10,d5,d1, sessionDate } = req.body;
+  const id = 'den_' + Date.now();
+  const total =
+    (d2000||0)*2000+(d1000||0)*1000+(d500||0)*500+(d200||0)*200+
+    (d100||0)*100+(d50||0)*50+(d25||0)*25+(d10||0)*10+(d5||0)*5+(d1||0)*1;
+  db.run(
+    'INSERT INTO denominations (id,companyId,sessionDate,d2000,d1000,d500,d200,d100,d50,d25,d10,d5,d1,totalCash,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [id,req.user.companyId,sessionDate||new Date().toISOString().split('T')[0],
+     d2000||0,d1000||0,d500||0,d200||0,d100||0,d50||0,d25||0,d10||0,d5||0,d1||0,total,new Date().toISOString()],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Cuadre guardado', id, total });
+    }
+  );
+});
+
+app.get('/api/denominations', (req, res) => {
+  db.all('SELECT * FROM denominations WHERE companyId=? ORDER BY createdAt DESC LIMIT 20', [req.user.companyId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+// ============================================================
+// FINANZAS — Resumen
+// ============================================================
+app.get('/api/finances/summary', (req, res) => {
+  const cId = req.user.companyId;
+  const getP = (sql, params) => new Promise((resolve, reject) => db.get(sql, params, (e,r) => e ? reject(e) : resolve(r)));
+  const allP = (sql, params) => new Promise((resolve, reject) => db.all(sql, params, (e,r) => e ? reject(e) : resolve(r)));
+  Promise.all([
+    getP('SELECT COALESCE(SUM(amount),0) as total FROM loans WHERE companyId=?', [cId]),
+    getP('SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE companyId=?', [cId]),
+    getP('SELECT COALESCE(SUM(interestAmount),0) as total FROM loans WHERE companyId=?', [cId]),
+    getP('SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE companyId=?', [cId]),
+    allP('SELECT category, COALESCE(SUM(amount),0) as total FROM expenses WHERE companyId=? GROUP BY category', [cId]),
+    getP("SELECT COALESCE(SUM(amount),0) as total FROM payments WHERE companyId=? AND date >= date('now','start of month')", [cId]),
+    getP("SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE companyId=? AND date >= date('now','start of month')", [cId]),
+    allP("SELECT strftime('%Y-%m', date) as month, SUM(amount) as income FROM payments WHERE companyId=? AND date >= date('now', '-5 months', 'start of month') GROUP BY strftime('%Y-%m', date) ORDER BY month ASC", [cId]),
+    allP("SELECT strftime('%Y-%m', date) as month, SUM(amount) as expense FROM expenses WHERE companyId=? AND date >= date('now', '-5 months', 'start of month') GROUP BY strftime('%Y-%m', date) ORDER BY month ASC", [cId])
+  ]).then(([loansTotal, paymentsTotal, interestTotal, expensesTotal, expByCategory, monthPayments, monthExpenses, histIncome, histExpenses]) => {
+    
+    // Unificar histórico por mes
+    const cashflowMap = {};
+    const d = new Date();
+    d.setDate(1); // Set to 1st to avoid overflow
+    // Generar últimos 6 meses (incluyendo actual) para asegurar que haya datos
+    for (let i = 5; i >= 0; i--) {
+      const tempD = new Date(d.getFullYear(), d.getMonth() - i, 1);
+      const mStr = `${tempD.getFullYear()}-${String(tempD.getMonth() + 1).padStart(2, '0')}`;
+      cashflowMap[mStr] = { month: mStr, income: 0, expense: 0 };
+    }
+    
+    if (histIncome) histIncome.forEach(r => { if(cashflowMap[r.month]) cashflowMap[r.month].income = r.income; });
+    if (histExpenses) histExpenses.forEach(r => { if(cashflowMap[r.month]) cashflowMap[r.month].expense = r.expense; });
+    
+    const cashflow = Object.values(cashflowMap);
+
+    res.json({
+      capitalLent: loansTotal.total,
+      collected: paymentsTotal.total,
+      totalInterest: interestTotal.total,
+      totalExpenses: expensesTotal.total,
+      netProfit: paymentsTotal.total - expensesTotal.total,
+      monthlyProfit: monthPayments.total - monthExpenses.total,
+      expensesByCategory: expByCategory || [],
+      cashflow: cashflow
+    });
+  }).catch(err => res.status(500).json({ error: err.message }));
+});
+
+// ============================================================
+// DEPURADOR DE BASE DE DATOS
+// ============================================================
+const ALLOWED_DEBUG_TABLES = [
+  'clients', 'loans', 'instalments', 'payments',
+  'expenses', 'guarantees', 'bank_accounts', 'bank_transactions',
+  'cash_sessions', 'denominations'
+];
+
+app.get('/api/debugger/table/:table', requireAuth, (req, res) => {
+  const table = req.params.table;
+  if (!ALLOWED_DEBUG_TABLES.includes(table)) {
+    return res.status(403).json({ error: 'Tabla no permitida.' });
+  }
+  const companyId = req.user.companyId;
+  db.all(
+    `SELECT * FROM ${table} WHERE companyId = ? ORDER BY rowid DESC LIMIT 500`,
+    [companyId],
+    (err, rows) => {
+      if (err) {
+        // Si la tabla no tiene companyId, devolver sin filtro (tablas de sesiones/denominaciones)
+        db.all(`SELECT * FROM ${table} WHERE companyId = ? ORDER BY rowid DESC LIMIT 500`,
+          [companyId], (e2, r2) => {
+          if (e2) return res.status(500).json({ error: e2.message });
+          res.json(r2 || []);
+        });
+        return;
+      }
+      res.json(rows || []);
+    }
+  );
+});
+
+app.post('/api/debugger/query', requireAuth, (req, res) => {
+  const { sql } = req.body;
+  if (!sql || typeof sql !== 'string') {
+    return res.status(400).json({ error: 'Consulta SQL requerida.' });
+  }
+  const trimmed = sql.trim().toUpperCase();
+  if (!trimmed.startsWith('SELECT')) {
+    return res.status(403).json({ error: 'Solo se permiten consultas SELECT por seguridad.' });
+  }
+  // Bloquear palabras peligrosas
+  const blocked = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'TRUNCATE', 'CREATE', 'REPLACE', 'ATTACH'];
+  for (const word of blocked) {
+    if (trimmed.includes(word)) {
+      return res.status(403).json({ error: `Operación '${word}' no permitida en el depurador.` });
+    }
+  }
+  const companyId = req.user.companyId;
+  // Añadir restricción de companyId si no está en la query
+  let safeSql = sql;
+  if (!trimmed.includes('WHERE') && !trimmed.includes('COMPANYID')) {
+    // Intentar añadir filtro automático — solo si es una tabla conocida
+    const match = sql.match(/FROM\s+(\w+)/i);
+    if (match && ALLOWED_DEBUG_TABLES.includes(match[1].toLowerCase())) {
+      safeSql = sql + ` WHERE companyId = '${companyId}'`;
+    }
+  }
+  db.all(safeSql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+// ============================================================
+// FASE 4: CRON JOB - NOTIFICACIONES DE MORA
+// ============================================================
+const cron = require('node-cron');
+
+function runOverdueCron() {
+  console.log('Ejecutando revisión de mora...', new Date().toISOString());
+  
+  const query = `
+    SELECT i.id as instalmentId, i.amount, i.dueDate, l.id as loanId, c.name, c.email
+    FROM instalments i
+    JOIN loans l ON i.loanId = l.id
+    JOIN clients c ON l.clientId = c.id
+    WHERE i.status != 'paid' AND date(i.dueDate) < date('now')
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) return console.error('Error en cron de mora:', err.message);
+    if (!rows || rows.length === 0) return;
+    
+    // Configurar transporte genérico para todos
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER || 'no-reply@prestamosapp.com',
+        pass: process.env.EMAIL_PASS || 'tucontraseña'
+      }
+    });
+
+    rows.forEach(row => {
+      if (!row.email) return; // Si el cliente no tiene email, no se envía
+      
+      const mailOptions = {
+        from: process.env.EMAIL_USER || 'no-reply@prestamosapp.com',
+        to: row.email,
+        subject: 'Aviso de Cuota Vencida - PrestamosApp',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2 style="color: #e3342f;">Aviso de Cuota Vencida</h2>
+            <p>Hola <strong>${row.name}</strong>,</p>
+            <p>Le recordamos que tiene una cuota vencida de su préstamo (ID: ${row.loanId}) por un monto de <strong>$${row.amount}</strong>.</p>
+            <p>La fecha de vencimiento era el <strong>${row.dueDate}</strong>.</p>
+            <p>Por favor, póngase al día con sus pagos para evitar recargos adicionales.</p>
+            <br>
+            <p>Atentamente,<br>El equipo de PrestamosApp</p>
+          </div>
+        `
+      };
+
+      if (process.env.EMAIL_USER) {
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) console.error("Error enviando recordatorio a", row.email, error);
+          else console.log("Recordatorio enviado a", row.email);
+        });
+      } else {
+        console.log(`[Modo Dev] Se enviaría correo de mora a: ${row.email} por cuota de ${row.amount}`);
+      }
+    });
+  });
+}
+
+// Programar para ejecutarse todos los días a las 08:00 AM
+cron.schedule('0 8 * * *', () => {
+  runOverdueCron();
+});
+
+// Endpoint manual para pruebas de la Fase 4
+app.post('/api/cron/overdue', requireAdmin, (req, res) => {
+  runOverdueCron();
+  res.json({ message: 'Proceso de revisión de mora iniciado manualmente. Revisa los logs del servidor.' });
+});
+// ============================================================
+// FASE 5: WHATSAPP API REAL
+// ============================================================
+let waClient = null;
+let waQrCodeDataUrl = null;
+let isWaReady = false;
+
+try {
+  const { Client, LocalAuth } = require('whatsapp-web.js');
+  const qrcode = require('qrcode');
+
+  waClient = new Client({
+    authStrategy: new LocalAuth({ clientId: "prestamos-app-global" }),
+    puppeteer: {
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+  });
+
+  waClient.on('qr', async (qr) => {
+    console.log('WhatsApp QR Code recibido. Escanear en la web.');
+    waQrCodeDataUrl = await qrcode.toDataURL(qr);
+  });
+
+  waClient.on('ready', () => {
+    console.log('Cliente de WhatsApp está listo!');
+    isWaReady = true;
+    waQrCodeDataUrl = null;
+  });
+
+  waClient.on('authenticated', () => {
+    console.log('WhatsApp autenticado.');
+  });
+
+  waClient.on('disconnected', (reason) => {
+    console.log('WhatsApp desconectado:', reason);
+    isWaReady = false;
+    waClient.initialize();
+  });
+
+  waClient.initialize();
+} catch (e) {
+  console.log('whatsapp-web.js no está instalado o falló al iniciar:', e.message);
+}
+
+// Endpoints de WhatsApp
+app.get('/api/whatsapp/status', requireAuth, (req, res) => {
+  res.json({
+    ready: isWaReady,
+    qrUrl: waQrCodeDataUrl
+  });
+});
+
+app.post('/api/whatsapp/send', requireAuth, async (req, res) => {
+  if (!isWaReady || !waClient) {
+    return res.status(400).json({ error: 'WhatsApp no está conectado todavía.' });
+  }
+  
+  const { phone, message } = req.body;
+  if (!phone || !message) {
+    return res.status(400).json({ error: 'Teléfono y mensaje requeridos.' });
+  }
+
+  try {
+    // Formatear el número (eliminar +, espacios, -, e incluir el sufijo de WA)
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const chatId = cleanPhone + '@c.us';
+    
+    await waClient.sendMessage(chatId, message);
+    res.json({ message: 'Mensaje enviado exitosamente por WhatsApp.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al enviar WhatsApp: ' + err.message });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Servidor iniciado en http://${HOST}:${PORT}`);
 });
 
 process.on('uncaughtException', err => { console.error('Uncaught Exception', err); });

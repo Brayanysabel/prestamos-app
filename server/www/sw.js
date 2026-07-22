@@ -1,4 +1,4 @@
-const CACHE_NAME = 'prestamos-app-v2026-07-14';
+const CACHE_NAME = 'prestamos-app-v2026-07-22-fix1';
 const ASSETS = [
   '/',
   '/index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
+  self.skipWaiting(); // Force update immediately
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -20,6 +21,11 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  // Bypass cache completely for localhost (Development)
+  if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
+    return;
+  }
+
   // Skip cross-origin requests and API requests
   if (!event.request.url.startsWith(self.location.origin) || event.request.url.includes('/api/')) {
     return;
@@ -49,6 +55,7 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('activate', event => {
+  event.waitUntil(clients.claim()); // Take control of all open pages immediately
   const cacheAllowlist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {

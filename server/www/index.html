@@ -6,7 +6,7 @@
   <title>PrestamosApp - Sistema de Gestión de Préstamos</title>
   <!-- SEO Meta Tags -->
   <meta name="description" content="Aplicación web moderna y minimalista para simular, otorgar, gestionar y cobrar préstamos.">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=6">
   <!-- Soporte para PWA e iOS -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#09090b">
@@ -17,7 +17,7 @@
   <!-- Fuente e Íconos -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Chart.js Local -->
-  <script src="chart.min.js"></script>
+
   <!-- Lucide Icons Local -->
   <script src="lucide.min.js"></script>
 </head>
@@ -44,19 +44,27 @@
         </div>
         <div class="form-group mb-4">
           <label for="login-password">Contraseña</label>
-          <input type="password" id="login-password" placeholder="••••••••" required>
+          <input type="password" id="login-password" placeholder="⬢⬢⬢⬢⬢⬢⬢⬢" required>
         </div>
         <div id="login-error" class="text-danger mb-4 d-none" style="font-size: 0.85rem; color: var(--danger); text-align: center;"></div>
         <button type="submit" class="btn btn-primary" style="width: 100%;">
           <i data-lucide="log-in"></i> Iniciar Sesión
         </button>
       </form>
+      <div style="text-align:center; margin-top:1.25rem; padding-top:1.25rem; border-top:1px solid var(--border, #334155);">
+        <p style="font-size:0.88rem; color:var(--text-muted, #94a3b8); margin-bottom:0.6rem;">¿Todavía no tienes cuenta?</p>
+        <a href="/register.html" style="display:inline-flex; align-items:center; gap:0.4rem; background:transparent; border:1.5px solid var(--primary,#3b82f6); color:var(--primary,#3b82f6); border-radius:0.6rem; padding:0.5rem 1.2rem; font-size:0.9rem; font-weight:600; text-decoration:none; transition:background 0.2s, color 0.2s;"
+          onmouseover="this.style.background='var(--primary,#3b82f6)';this.style.color='#fff'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--primary,#3b82f6)'">
+          �xa� Crear cuenta gratis
+        </a>
+      </div>
     </div>
   </div>
 
   <div id="app-wrapper" class="app-container d-none">
     
-    <!-- BARRA LATERAL DE NAVEGACIÓN -->
+    <!-- BARRA LATERAL DE NAVEGACI�N -->
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon" id="sidebar-brand-icon" style="max-width: 40px;">
@@ -90,6 +98,42 @@
             <span>Préstamos</span>
           </a>
         </li>
+        <li id="nav-guarantees" style="display:none;">
+          <a class="nav-link" data-target="guarantees">
+            <i data-lucide="shield-check"></i>
+            <span>Garantías</span>
+          </a>
+        </li>
+        <li id="nav-finances" style="display:none;">
+          <a class="nav-link" data-target="finances">
+            <i data-lucide="bar-chart-3"></i>
+            <span>Finanzas</span>
+          </a>
+        </li>
+        <li id="nav-expenses" style="display:none;">
+          <a class="nav-link" data-target="expenses">
+            <i data-lucide="receipt"></i>
+            <span>Gastos</span>
+          </a>
+        </li>
+        <li id="nav-banks" style="display:none;">
+          <a class="nav-link" data-target="banks">
+            <i data-lucide="building-2"></i>
+            <span>Bancos</span>
+          </a>
+        </li>
+        <li id="nav-cash" style="display:none;">
+          <a class="nav-link" data-target="cash">
+            <i data-lucide="wallet"></i>
+            <span>Caja</span>
+          </a>
+        </li>
+        <li id="nav-debugger" style="display:none;">
+          <a class="nav-link" data-target="debugger">
+            <i data-lucide="terminal"></i>
+            <span>Depurador DB</span>
+          </a>
+        </li>
         <li>
           <a class="nav-link" data-target="settings">
             <i data-lucide="settings"></i>
@@ -117,7 +161,7 @@
       </nav>
       
       <div class="sidebar-footer">
-        <button id="theme-toggle-btn" class="btn btn-secondary btn-sm" style="width: 100%; display: flex; justify-content: center; gap: 0.5rem;">
+        <button id="theme-toggle-btn" class="btn btn-secondary btn-sm" style="width: 100%; display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 0.5rem;">
           <i data-lucide="sun" id="theme-icon"></i>
           <span id="theme-text">Modo Oscuro</span>
         </button>
@@ -141,14 +185,17 @@
             <p id="section-subtitle">Vista general del estado de tus préstamos.</p>
           </div>
         </div>
-        <div class="header-actions">
+        <div class="header-actions" style="display: flex; gap: 0.5rem; align-items: center;">
           <button id="quick-loan-btn" class="btn btn-primary">
-            <i data-lucide="plus"></i> Nuevo Préstamo
+            <i data-lucide="plus"></i> <span class="hide-mobile">Nuevo Préstamo</span>
+          </button>
+          <button onclick="closeApp()" class="btn btn-danger" title="Cerrar App / Salir" style="padding: 0.5rem 0.75rem;">
+            <i data-lucide="power"></i>
           </button>
         </div>
       </header>
       
-      <!-- ================= PESTAÑA: DASHBOARD ================= -->
+      <!-- ================= PESTA�A: DASHBOARD ================= -->
       <section id="sec-dashboard" class="app-section active">
         <!-- KPI Grid -->
         <div class="kpi-grid">
@@ -157,7 +204,7 @@
               <i data-lucide="badge-dollar-sign"></i>
             </div>
             <div class="kpi-info">
-              <span class="kpi-label">Capital Lentido</span>
+              <span class="kpi-label">Total Prestado</span>
               <span class="kpi-value" id="kpi-capital">$0.00</span>
             </div>
           </div>
@@ -166,7 +213,7 @@
               <i data-lucide="trending-up"></i>
             </div>
             <div class="kpi-info">
-              <span class="kpi-label">Intereses Proyectados</span>
+              <span class="kpi-label">Intereses por Cobrar</span>
               <span class="kpi-value" id="kpi-interests">$0.00</span>
             </div>
           </div>
@@ -184,12 +231,29 @@
               <i data-lucide="hand-helping"></i>
             </div>
             <div class="kpi-info">
-              <span class="kpi-label">Saldo Pendiente</span>
-              <span class="kpi-value" id="kpi-balance">$0.00</span>
+              <span class="kpi-label">Monto en Mora</span>
+              <span class="kpi-value" id="kpi-mora">$0.00</span>
             </div>
           </div>
         </div>
         
+        <!-- Termómetro de Morosidad -->
+        <div class="card mb-4" style="margin-bottom: 20px;">
+          <div class="card-header" style="padding-bottom: 10px;">
+            <span class="card-title">Termómetro de Morosidad</span>
+            <span class="card-subtitle">Porcentaje de cartera vencida sobre el total prestado</span>
+          </div>
+          <div style="padding: 0 20px 20px 20px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 14px; font-weight: 500; color: var(--text-color);" id="mora-label-text">Morosidad Saludable</span>
+              <span style="font-size: 14px; font-weight: 600;" id="mora-percentage-text">0.00%</span>
+            </div>
+            <div style="width: 100%; height: 12px; background-color: var(--surface-color); border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color);">
+              <div id="mora-progress-bar" style="height: 100%; width: 0%; background-color: var(--success-color); transition: width 0.5s ease-in-out, background-color 0.5s;"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Gráficos -->
         <div class="dashboard-charts">
           <div class="card">
@@ -203,8 +267,8 @@
           </div>
           <div class="card">
             <div class="card-header">
-              <span class="card-title">Estado de Préstamos</span>
-              <span class="card-subtitle">Distribución porcentual</span>
+              <span class="card-title">Capital Prestado vs. Recuperado</span>
+              <span class="card-subtitle">Distribución del portafolio</span>
             </div>
             <div class="chart-container">
               <canvas id="statusChart"></canvas>
@@ -215,7 +279,7 @@
         <!-- Actividad Reciente -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">Últimos Pagos Registrados</span>
+            <span class="card-title">�altimos Pagos Registrados</span>
             <span class="card-subtitle">Actividad de cobranza reciente</span>
           </div>
           <div class="table-wrapper">
@@ -240,7 +304,7 @@
         </div>
       </section>
       
-      <!-- ================= PESTAÑA: CALCULADORA ================= -->
+      <!-- ================= PESTA�A: CALCULADORA ================= -->
       <section id="sec-calculator" class="app-section">
         <div class="card">
           <div class="card-header">
@@ -280,6 +344,7 @@
                 <label for="calc-type">Sistema de Interés</label>
                 <select id="calc-type" required>
                   <option value="french" selected>Amortización Francesa (Cuota Fija)</option>
+                  <option value="german">Amortización Alemana (Capital Fijo)</option>
                   <option value="simple">Interés Simple (Cuotas Iguales)</option>
                 </select>
               </div>
@@ -331,13 +396,19 @@
         </div>
       </section>
       
-      <!-- ================= PESTAÑA: CLIENTES ================= -->
+      <!-- ================= PESTA�A: CLIENTES ================= -->
       <section id="sec-clients" class="app-section">
         <div class="search-bar">
           <input type="text" id="client-search" class="search-input" placeholder="Buscar cliente por nombre o teléfono...">
           <div style="display: flex; gap: 10px;">
-            <button id="export-clients-btn" class="btn btn-secondary" onclick="exportClientsCSV()" title="Exportar a Excel (CSV)">
-              <i data-lucide="download"></i> Exportar CSV
+            <button id="import-clients-csv-btn" class="btn btn-secondary" onclick="openImportClientsModal()" title="Importar desde CSV">
+              <i data-lucide="upload-cloud"></i> Importar
+            </button>
+            <button id="export-clients-csv-btn" class="btn btn-secondary" onclick="exportClientsCSV()" title="Exportar a Excel (CSV)">
+              <i data-lucide="file-spreadsheet"></i> Exportar
+            </button>
+            <button id="export-clients-pdf-btn" class="btn btn-secondary" onclick="exportClientsPDF()" title="Exportar a PDF">
+              <i data-lucide="file-text"></i> PDF
             </button>
             <button id="add-client-btn" class="btn btn-primary">
               <i data-lucide="user-plus"></i> Registrar Cliente
@@ -366,7 +437,7 @@
         </div>
       </section>
       
-      <!-- ================= PESTAÑA: PRÉSTAMOS ================= -->
+      <!-- ================= PESTA�A: PR�0STAMOS ================= -->
       <section id="sec-loans" class="app-section">
         <div class="card" style="padding: 1rem; margin-bottom: 1.25rem;">
           <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;">
@@ -380,8 +451,11 @@
               </select>
             </div>
             <div style="display: flex; gap: 10px;">
-              <button id="export-loans-btn" class="btn btn-secondary" onclick="exportLoansCSV()" title="Exportar a Excel (CSV)">
-                <i data-lucide="download"></i> Exportar CSV
+              <button id="export-loans-csv-btn" class="btn btn-secondary" onclick="exportLoansCSV()" title="Exportar a Excel (CSV)">
+                <i data-lucide="file-spreadsheet"></i> CSV
+              </button>
+              <button id="export-loans-pdf-btn" class="btn btn-secondary" onclick="exportLoansPDF()" title="Exportar a PDF">
+                <i data-lucide="file-text"></i> PDF
               </button>
               <button id="new-loan-shortcut-btn" class="btn btn-primary">
                 <i data-lucide="plus-circle"></i> Nuevo Préstamo
@@ -413,7 +487,7 @@
         </div>
       </section>
       
-      <!-- ================= PESTAÑA: AJUSTES ================= -->
+      <!-- ================= PESTA�A: AJUSTES ================= -->
       <section id="sec-settings" class="app-section">
         <div class="card">
           <div class="card-header">
@@ -474,7 +548,7 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
               <div class="form-group">
                 <label for="currency-symbol-input">Símbolo de Moneda</label>
-                <input type="text" id="currency-symbol-input" placeholder="Ej. RD$, $, €, MXN">
+                <input type="text" id="currency-symbol-input" placeholder="Ej. RD$, $, ��, MXN">
               </div>
               <div class="form-group">
                 <label for="default-interest-input">Tasa de Interés por Defecto (%)</label>
@@ -485,29 +559,49 @@
             <button type="submit" class="btn btn-primary">Guardar Ajustes Financieros</button>
           </form>
         </div>
-        <div class="card">
+        <div class="card" id="settings-users-card">
           <div class="card-header">
             <span class="card-title">Gestión de Usuarios (Empleados)</span>
           </div>
           <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
             Añade usuarios adicionales para que puedan acceder y gestionar los préstamos de esta misma empresa.
           </p>
-          <form id="add-user-form">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div class="form-group">
-                <label for="new-user-username">Nombre de Usuario</label>
-                <input type="text" id="new-user-username" placeholder="Ej. juan.perez" required>
-              </div>
-              <div class="form-group">
-                <label for="new-user-password">Contraseña</label>
-                <input type="password" id="new-user-password" placeholder="••••••••" required>
-              </div>
+          <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+            <!-- Opci�n 1: Crear Manualmente -->
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem;">
+              <h4 style="margin-bottom: 1rem; color: var(--text);">Crear Manualmente</h4>
+              <form id="add-user-form">
+                <div class="form-group">
+                  <label for="new-user-username">Nombre de Usuario</label>
+                  <input type="text" id="new-user-username" placeholder="Ej. juan.perez" required>
+                </div>
+                <div class="form-group">
+                  <label for="new-user-password">Contrase�a inicial</label>
+                  <input type="password" id="new-user-password" placeholder="""""""""" required>
+                </div>
+                <div id="add-user-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                  <i data-lucide="user-plus"></i> Crear Usuario
+                </button>
+              </form>
             </div>
-            <div id="add-user-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
-            <button type="submit" class="btn btn-primary" style="margin-bottom: 1.5rem;">
-              <i data-lucide="user-plus"></i> Añadir Usuario
-            </button>
-          </form>
+
+            <!-- Opci�n 2: Invitar por Email -->
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1.5rem;">
+              <h4 style="margin-bottom: 1rem; color: var(--text);">Invitar por Email</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Env�a un enlace seguro para que el usuario establezca su propia contrase�a.</p>
+              <form id="invite-user-form">
+                <div class="form-group">
+                  <label for="invite-user-email">Correo Electr�nico</label>
+                  <input type="email" id="invite-user-email" placeholder="ejemplo@correo.com" required>
+                </div>
+                <div id="invite-user-msg" style="font-size: 0.85rem; margin-bottom: 1rem; font-weight: 500;"></div>
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">
+                  <i data-lucide="mail"></i> Enviar Invitaci�n
+                </button>
+              </form>
+            </div>
+          </div>
           
           <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
             <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--text);">Usuarios Registrados</h3>
@@ -525,6 +619,47 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">WhatsApp - Conexi�n de Dispositivo</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Escanea el c�digo QR con tu aplicaci�n de WhatsApp (Dispositivos Vinculados) para permitir que el sistema env�e mensajes a tus clientes desde tu n�mero.
+          </p>
+          <div style="text-align: center; margin-bottom: 1.5rem;">
+            <div id="wa-status-badge" style="display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 500; background-color: var(--surface); border: 1px solid var(--border); margin-bottom: 1rem;">
+              Verificando estado...
+            </div>
+            <div id="wa-qr-container" style="display: none; background: #fff; padding: 1rem; border-radius: var(--radius-md); max-width: 250px; margin: 0 auto; border: 1px solid var(--border);">
+              <img id="wa-qr-image" src="" alt="WhatsApp QR Code" style="width: 100%; height: auto; display: block;">
+              <p style="font-size: 0.75rem; color: #666; margin-top: 0.5rem; text-align: center;">Escanea este c�digo</p>
+            </div>
+            <div id="wa-ready-container" style="display: none;">
+              <i data-lucide="check-circle-2" style="color: var(--success); width: 48px; height: 48px; margin-bottom: 1rem;"></i>
+              <p style="color: var(--success); font-weight: 500;">�WhatsApp Conectado y Listo!</p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="checkWhatsAppStatus()" style="width: 100%;">
+            <i data-lucide="refresh-cw"></i> Actualizar Estado
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Notificaciones de Mora</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            El sistema revisa autom�ticamente todos los d�as a las 08:00 AM las cuotas vencidas y env�a un aviso por correo a los clientes. 
+            Puedes forzar esta revisi�n manualmente usando el siguiente bot�n.
+          </p>
+          <div style="margin-bottom: 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="triggerOverdueCron()" id="btn-trigger-cron">
+              <i data-lucide="bell-ring"></i> Ejecutar Revisi�n de Mora Ahora
+            </button>
+            <div id="cron-msg" style="font-size: 0.85rem; margin-top: 0.5rem; font-weight: 500;"></div>
           </div>
         </div>
 
@@ -600,15 +735,15 @@
           </p>
           
           <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
-            <button type="button" class="btn btn-secondary" id="export-clients-btn">
+            <button type="button" class="btn btn-secondary" id="export-clients-btn" onclick="exportClientsCSV()">
               <i data-lucide="download"></i> Exportar Clientes (CSV)
             </button>
-            <button type="button" class="btn btn-secondary" id="export-loans-btn">
+            <button type="button" class="btn btn-secondary" id="export-loans-btn" onclick="exportLoansCSV()">
               <i data-lucide="download"></i> Exportar Préstamos (CSV)
             </button>
           </div>
         </div>
-        <div class="card">
+        <div class="card" id="settings-data-mgmt-card">
           <div class="card-header">
             <span class="card-title">Gestión de Datos (Respaldo)</span>
           </div>
@@ -632,7 +767,7 @@
           </div>
         </div>
       </section>
-        <!-- 7. SECCIÓN MI PLAN -->
+        <!-- 7. SECCI�N MI PLAN -->
       <section id="sec-plans" class="app-section">
         <div class="card mb-4" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: white;">
           <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
@@ -663,7 +798,320 @@
         </div>
       </section>
 
-      <!-- 8. SECCIÓN SUPER ADMIN -->
+      <!-- ================= NUEVAS SECCIONES ================= -->
+      <!-- GARANTÍAS -->
+      <section id="sec-guarantees" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Garantías</span>
+            <span class="card-subtitle">Administra las garantías de los préstamos</span>
+            <button class="btn btn-primary ml-auto" onclick="showModal('modal-guarantee-form')">
+              <i data-lucide="plus"></i> Nueva Garantía
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>ID Préstamo</th>
+                    <th>Garante</th>
+                    <th>Teléfono</th>
+                    <th>Identificación</th>
+                    <th>Dirección</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="guarantees-table-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GASTOS -->
+      <section id="sec-expenses" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Gastos Operativos</span>
+            <span class="card-subtitle">Registra y controla los gastos de la empresa</span>
+            <button class="btn btn-primary ml-auto" onclick="showModal('modal-expense-form')">
+              <i data-lucide="plus"></i> Nuevo Gasto
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Categoría</th>
+                    <th>Monto</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="expenses-table-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BANCOS -->
+      <section id="sec-banks" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Cuentas Bancarias</span>
+            <span class="card-subtitle">Gestión de bancos y saldo disponible</span>
+            <button class="btn btn-primary ml-auto" onclick="showModal('modal-bank-form')">
+              <i data-lucide="plus"></i> Nueva Cuenta
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;" id="banks-grid">
+              <!-- Cuentas bancarias renderizadas por JS -->
+            </div>
+            
+            <h3 class="mt-8 mb-4">Transacciones Recientes</h3>
+            <div class="flex gap-4 mb-4">
+              <button class="btn btn-secondary" onclick="showModal('modal-bank-transaction')">
+                <i data-lucide="arrow-up-down"></i> Registrar Movimiento
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cuenta</th>
+                    <th>Tipo</th>
+                    <th>Monto</th>
+                    <th>Descripción</th>
+                  </tr>
+                </thead>
+                <tbody id="bank-transactions-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CAJA -->
+      <section id="sec-cash" class="app-section">
+        <div class="card mb-6">
+          <div class="card-header">
+            <span class="card-title">Control de Caja</span>
+            <span class="card-subtitle">Apertura y cierre de caja diario</span>
+          </div>
+          <div class="card-body">
+            <div id="cash-status-banner" class="alert alert-info mb-4">
+              Cargando estado de caja...
+            </div>
+            <div class="flex gap-4">
+              <button class="btn btn-primary" id="btn-open-cash" onclick="showModal('modal-open-cash')">
+                Abrir Caja
+              </button>
+              <button class="btn btn-warning" id="btn-close-cash" onclick="showModal('modal-close-cash')" disabled>
+                Cerrar Caja
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="card mb-6">
+          <div class="card-header">
+            <span class="card-title">Cuadre por Denominaciones</span>
+            <button class="btn btn-secondary ml-auto" onclick="showModal('modal-denominations')">
+              <i data-lucide="calculator"></i> Nuevo Cuadre
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Total Contabilizado</th>
+                    <th>Fecha Registro</th>
+                  </tr>
+                </thead>
+                <tbody id="denominations-history">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Historial de Cajas</span>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table w-full">
+                <thead>
+                  <tr>
+                    <th>Apertura</th>
+                    <th>Cierre</th>
+                    <th>Saldo Inicial</th>
+                    <th>Saldo Final</th>
+                    <th>Diferencia</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="cash-history-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FINANZAS -->
+      <section id="sec-finances" class="app-section">
+        <div class="card mb-6">
+          <div class="card-header">
+            <span class="card-title">Resumen Financiero</span>
+            <span class="card-subtitle">Análisis global del negocio</span>
+          </div>
+          <div class="card-body">
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+              <div class="stat-card" style="background: rgba(var(--primary-rgb), 0.1);">
+                <div class="stat-label">Capital Prestado Total</div>
+                <div class="stat-value" id="fin-capital-lent">$0.00</div>
+              </div>
+              <div class="stat-card" style="background: rgba(var(--success-rgb), 0.1);">
+                <div class="stat-label">Cobros Totales (Capital + Interés)</div>
+                <div class="stat-value" id="fin-collected">$0.00</div>
+              </div>
+              <div class="stat-card" style="background: rgba(var(--danger-rgb), 0.1);">
+                <div class="stat-label">Gastos Totales</div>
+                <div class="stat-value" id="fin-expenses">$0.00</div>
+              </div>
+              <div class="stat-card" style="background: rgba(var(--warning-rgb), 0.1);">
+                <div class="stat-label">Beneficio Neto (Ganancia)</div>
+                <div class="stat-value" id="fin-net-profit">$0.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Rendimiento Mensual</span></div>
+            <div class="card-body text-center">
+              <div style="font-size: 2rem; font-weight: bold;" id="fin-monthly-profit">$0.00</div>
+              <div class="text-muted">Balance del mes actual</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Gastos por Categor�a</span></div>
+            <div class="card-body">
+              <ul id="fin-expenses-category" class="list-none p-0 m-0">
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 2fr 1fr; gap: 1rem; margin-top: 1rem;">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Flujo de Caja (6 Meses)</span></div>
+            <div class="card-body" style="height: 300px; position: relative;">
+              <canvas id="chart-cashflow"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">Estado de Cartera</span></div>
+            <div class="card-body" style="height: 300px; position: relative;">
+              <canvas id="chart-portfolio"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECCI�N: DEPURADOR DE BASE DE DATOS -->
+      <section id="sec-debugger" class="app-section">
+        <div class="card mb-4">
+          <div class="card-header" style="background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.1)); border-bottom: 2px solid rgba(139,92,246,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+              <div>
+                <h2 class="card-title" style="color: #7c3aed; margin:0;">
+                  <i data-lucide="terminal" style="margin-right:0.5rem;"></i>
+                  Depurador de Base de Datos
+                </h2>
+                <p class="text-muted" style="margin:0.25rem 0 0 0; font-size:0.85rem;">Consulta, exporta e inspecciona los datos de tu empresa en tiempo real.</p>
+              </div>
+              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                <button class="btn btn-sm" onclick="debugRunQuery()" style="background:#7c3aed; color:#fff;">
+                  <i data-lucide="play"></i> Ejecutar
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="debugExportJSON()">
+                  <i data-lucide="download"></i> Exportar JSON
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="debugExportCSV()">
+                  <i data-lucide="file-spreadsheet"></i> Exportar CSV
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            <!-- Selector de tabla -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label>Tabla a consultar</label>
+                <select id="debug-table-select" onchange="debugLoadTable(this.value)">
+                  <option value="">-- Seleccionar tabla --</option>
+                  <option value="clients">Clientes</option>
+                  <option value="loans">Préstamos</option>
+                  <option value="instalments">Cuotas</option>
+                  <option value="payments">Pagos</option>
+                  <option value="expenses">Gastos</option>
+                  <option value="guarantees">Garantías</option>
+                  <option value="bank_accounts">Cuentas Bancarias</option>
+                  <option value="bank_transactions">Movimientos Bancarios</option>
+                  <option value="cash_sessions">Sesiones de Caja</option>
+                  <option value="denominations">Cuadres de Denominaciones</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label>Buscar en resultados</label>
+                <input type="text" id="debug-search" placeholder="Filtrar resultados..." oninput="debugFilterResults()">
+              </div>
+            </div>
+
+            <!-- Editor SQL -->
+            <div class="form-group" style="margin-bottom:1rem;">
+              <label style="display:flex; justify-content:space-between;">
+                <span>Consulta SQL Personalizada (solo lectura)</span>
+                <small class="text-muted">Solo se permiten consultas SELECT</small>
+              </label>
+              <textarea id="debug-sql-input" rows="3" style="font-family: var(--font-mono); font-size:0.85rem; width:100%; border:1px solid var(--border); border-radius:6px; padding:0.5rem; background:var(--surface); color:var(--text); resize:vertical;" placeholder="Ej: SELECT id, clientName, amount, status FROM loans WHERE status = 'overdue' LIMIT 20"></textarea>
+            </div>
+
+            <!-- Barra de estado -->
+            <div id="debug-status-bar" style="display:none; padding:0.4rem 0.75rem; border-radius:6px; margin-bottom:0.75rem; font-size:0.82rem; font-family: var(--font-mono);"></div>
+
+            <!-- Tabla de resultados -->
+            <div id="debug-results-wrapper" style="overflow-x:auto; min-height:100px;">
+              <div id="debug-placeholder" class="text-center text-muted" style="padding:3rem;">
+                <i data-lucide="database" style="width:40px; height:40px; margin-bottom:1rem; opacity:0.4;"></i>
+                <p>Selecciona una tabla o escribe una consulta SQL para ver los datos.</p>
+              </div>
+              <table id="debug-results-table" class="table" style="display:none; font-size:0.82rem;">
+                <thead id="debug-thead"></thead>
+                <tbody id="debug-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8. SECCI�N SUPER ADMIN -->
       <section id="sec-superadmin" class="app-section">
         <div class="card mb-4" style="border: 2px solid var(--warning);">
           <div class="card-header" style="background-color: rgba(245, 158, 11, 0.1);">
@@ -706,6 +1154,7 @@
                   <th>Precio Mensual</th>
                   <th>Límite de Préstamos</th>
                   <th>Límite de Usuarios</th>
+                  <th>Módulos</th>
                   <th class="text-end">Acciones</th>
                 </tr>
               </thead>
@@ -753,11 +1202,55 @@
             <label for="plan-max-users">Límite de Usuarios</label>
             <input type="number" id="plan-max-users" min="-1" required>
           </div>
+          <div class="form-group">
+            <label>Módulos Permitidos</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
+              <label><input type="checkbox" id="plan-allow-documents"> Documentos</label>
+              <label><input type="checkbox" id="plan-allow-guarantees"> Garantías</label>
+              <label><input type="checkbox" id="plan-allow-expenses"> Gastos</label>
+              <label><input type="checkbox" id="plan-allow-banks"> Bancos</label>
+              <label><input type="checkbox" id="plan-allow-cash"> Caja</label>
+              <label><input type="checkbox" id="plan-allow-denominations"> Cuadre Efectivo</label>
+              <label><input type="checkbox" id="plan-allow-finances"> Finanzas</label>
+              <label><input type="checkbox" id="plan-allow-whatsapp"> WhatsApp API</label>
+              <label><input type="checkbox" id="plan-allow-debugger"> Depurador DB</label>
+            </div>
+          </div>
           <div class="form-actions" style="margin-top: 1rem;">
             <button type="button" class="btn btn-secondary" onclick="closeModal('modal-plan')">Cancelar</button>
             <button type="submit" class="btn btn-primary">Guardar Plan</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: IMPORTAR CLIENTES CSV ================= -->
+  <div id="modal-import-clients" class="modal-overlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 class="card-title">Importar Clientes (CSV)</h2>
+        <button class="close-btn" onclick="closeModal('modal-import-clients')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-muted);">
+          Selecciona un archivo CSV para importar clientes de forma masiva. <br>
+          El archivo debe tener las siguientes columnas en su cabecera (en cualquier orden, m�nimo debe tener 'name'):<br>
+          <code style="background: rgba(0,0,0,0.05); padding: 2px 5px; border-radius: 4px;">name, phone, email, notes</code>
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="import-clients-file">Archivo CSV</label>
+          <input type="file" id="import-clients-file" class="form-input" accept=".csv" required>
+        </div>
+        <div id="import-clients-preview" style="display:none; margin-top: 1rem; padding: 1rem; background: rgba(var(--success-rgb), 0.1); border: 1px solid var(--success); border-radius: var(--radius-md);">
+          <!-- Resultados del preview se mostrar�n aqu� -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-import-clients')">Cancelar</button>
+        <button type="button" id="btn-process-import-clients" class="btn btn-primary" onclick="submitImportClients()">Importar Clientes</button>
       </div>
     </div>
   </div>
@@ -829,6 +1322,10 @@
             <span class="detail-label">Estado KYC</span>
             <span class="detail-value" id="client-detail-kyc"><span class="badge badge-warning">Pendiente</span></span>
           </div>
+          <div class="detail-item">
+            <span class="detail-label">Nivel de Riesgo</span>
+            <span class="detail-value" id="client-detail-risk" style="font-weight: bold;">-</span>
+          </div>
         </div>
         
         <div class="mb-4">
@@ -856,12 +1353,36 @@
             </table>
           </div>
         </div>
+
+        <!-- VISOR DE DOCUMENTOS KYC -->
+        <div id="client-kyc-docs-panel" style="display:none; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+          <strong style="display:flex; align-items:center; gap:0.4rem; margin-bottom:0.75rem; color:var(--success);">
+            <i data-lucide="shield-check" style="width:16px; height:16px;"></i>
+            Documentos de Identidad Verificados
+          </strong>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">Foto / Selfie del Cliente</p>
+              <img id="client-kyc-selfie" src="" alt="Selfie" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px; border:2px solid var(--success); cursor:zoom-in;" onclick="viewKycImageFullscreen(this.src, 'Selfie del Cliente')">
+            </div>
+            <div>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">Documento de Identidad</p>
+              <img id="client-kyc-document" src="" alt="Documento" style="width:100%; max-height:180px; object-fit:cover; border-radius:8px; border:2px solid var(--primary); cursor:zoom-in;" onclick="viewKycImageFullscreen(this.src, 'Documento de Identidad')">
+            </div>
+          </div>
+          <p style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem; text-align:center;">
+            <i data-lucide="zoom-in" style="width:12px; height:12px; vertical-align:middle;"></i> Clic en la imagen para ampliar.
+          </p>
+        </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
         <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(currentClientId, 'client')">
           <i data-lucide="trash-2"></i> Eliminar
         </button>
         <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" id="client-whatsapp-btn" onclick="sendWhatsAppToClient()" style="background-color: #25D366; color: white; border-color: #25D366;">
+            <i data-lucide="message-circle"></i> Enviar WA
+          </button>
           <button type="button" class="btn btn-primary" id="start-kyc-btn">
             <i data-lucide="shield-check"></i> Verificar Cliente
           </button>
@@ -871,7 +1392,7 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: DETALLE DEL PRÉSTAMO ================= -->
+  <!-- ================= MODAL: DETALLE DEL PR�0STAMO ================= -->
   <div id="modal-loan-detail" class="modal-overlay">
     <div class="modal-container" style="max-width: 800px;">
       <div class="modal-header">
@@ -884,6 +1405,13 @@
         </button>
       </div>
       <div class="modal-body">
+        <div id="loan-detail-client-photo-container" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; display: none;">
+          <img id="loan-detail-client-photo" src="" alt="Client Photo" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary);">
+          <div>
+            <div style="font-size: 0.85rem; color: var(--success); font-weight: 600;"><i data-lucide="check-circle" style="width: 14px; height: 14px; vertical-align: middle;"></i> Identidad Verificada</div>
+            <div style="font-weight: 600; color: var(--text); font-size: 1.1rem;" id="loan-detail-client-name-photo"></div>
+          </div>
+        </div>
         <div class="detail-grid">
           <div class="detail-item">
             <span class="detail-label">Cliente</span>
@@ -947,11 +1475,16 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between;">
+      <div class="modal-footer" style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(document.getElementById('loan-detail-id').textContent, 'loan')">
           <i data-lucide="trash-2"></i> Eliminar Préstamo
         </button>
-        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btn-contract-pdf" type="button" class="btn btn-primary" onclick="generateContractPDF(document.getElementById('loan-detail-id').textContent)" style="display:none;">
+            <i data-lucide="file-text"></i> Generar Contrato (PDF)
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1031,7 +1564,7 @@
   </div>
 
   <!-- Importar JS -->
-  <!-- ================= MODAL: AUTORIZACIÓN PARA BORRAR ================= -->
+  <!-- ================= MODAL: AUTORIZACI�N PARA BORRAR ================= -->
   <div id="modal-delete-auth" class="modal-overlay">
     <div class="modal-container" style="max-width: 400px;">
       <div class="modal-header">
@@ -1093,7 +1626,7 @@
 
         <div class="form-group text-left mb-4">
           <label for="kyc-document-file">Documento de Identidad (Opcional)</label>
-          <input type="file" id="kyc-document-file" accept="image/*,.pdf">
+          <input type="file" id="kyc-document-file" accept="image/*">
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
@@ -1105,6 +1638,18 @@
           <div class="detail-item">
             <span class="detail-label">Interés Proyectado</span>
             <span class="detail-value mono" id="loan-detail-interest-amount">$0.00</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Sistema</span>
+            <span class="detail-value" id="loan-detail-type">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Tasa Anual (APR)</span>
+            <span class="detail-value" id="loan-detail-apr">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Frecuencia</span>
+            <span class="detail-value" id="loan-detail-frequency">-</span>
           </div>
           <div class="detail-item">
             <span class="detail-label">Total Cobrado</span>
@@ -1142,11 +1687,16 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between;">
+      <div class="modal-footer" style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <button type="button" class="btn btn-danger" onclick="promptDeleteAuth(document.getElementById('loan-detail-id').textContent, 'loan')">
           <i data-lucide="trash-2"></i> Eliminar Préstamo
         </button>
-        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btn-contract-pdf-2" type="button" class="btn btn-primary" onclick="generateContractPDF(document.getElementById('loan-detail-id').textContent)" style="display:none;">
+            <i data-lucide="file-text"></i> Generar Contrato (PDF)
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-loan-detail')">Cerrar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1225,7 +1775,7 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: AUTORIZACIÓN PARA BORRAR ================= -->
+  <!-- ================= MODAL: AUTORIZACI�N PARA BORRAR ================= -->
   <div id="modal-delete-auth" class="modal-overlay">
     <div class="modal-container" style="max-width: 400px;">
       <div class="modal-header">
@@ -1287,7 +1837,7 @@
 
         <div class="form-group text-left mb-4">
           <label for="kyc-document-file">Documento de Identidad (Opcional)</label>
-          <input type="file" id="kyc-document-file" accept="image/*,.pdf">
+          <input type="file" id="kyc-document-file" accept="image/*">
         </div>
       </div>
       <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
@@ -1299,6 +1849,293 @@
     </div>
   </div>
 
+  <!-- ================= NUEVOS MODALES ================= -->
+  <!-- MODAL: Nueva Garantía -->
+  <div id="modal-guarantee-form" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Registrar Garantía</h3>
+        <button class="modal-close" onclick="closeModal('modal-guarantee-form')">&times;</button>
+      </div>
+      <form id="form-guarantee" onsubmit="event.preventDefault(); submitGuarantee();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>ID Préstamo *</label>
+            <input type="text" id="guar-loanId" required placeholder="Ej: L-1234">
+          </div>
+          <div class="form-group">
+            <label>Nombre del Garante *</label>
+            <input type="text" id="guar-name" required>
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="tel" id="guar-phone">
+          </div>
+          <div class="form-group">
+            <label>Cédula/Identificación</label>
+            <input type="text" id="guar-id">
+          </div>
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" id="guar-address">
+          </div>
+          <div class="form-group">
+            <label>Notas/Descripción de la Garantía</label>
+            <textarea id="guar-notes" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-guarantee-form')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Garantía</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Nuevo Gasto -->
+  <div id="modal-expense-form" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Registrar Gasto</h3>
+        <button class="modal-close" onclick="closeModal('modal-expense-form')">&times;</button>
+      </div>
+      <form id="form-expense" onsubmit="event.preventDefault(); submitExpense();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Descripción *</label>
+            <input type="text" id="exp-description" required>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="exp-category">
+              <option value="operativo">Operativo</option>
+              <option value="nomina">Nómina / Salarios</option>
+              <option value="servicios">Servicios (Agua, Luz, Internet)</option>
+              <option value="marketing">Marketing</option>
+              <option value="general">General / Otros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto *</label>
+            <input type="number" step="0.01" id="exp-amount" required>
+          </div>
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="exp-date" required>
+          </div>
+          <div class="form-group">
+            <label>Notas adicionales</label>
+            <textarea id="exp-notes" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-expense-form')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Gasto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Nueva Cuenta Bancaria -->
+  <div id="modal-bank-form" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Registrar Cuenta Bancaria</h3>
+        <button class="modal-close" onclick="closeModal('modal-bank-form')">&times;</button>
+      </div>
+      <form id="form-bank" onsubmit="event.preventDefault(); submitBank();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Nombre del Banco *</label>
+            <input type="text" id="bank-name" required>
+          </div>
+          <div class="form-group">
+            <label>Número de Cuenta</label>
+            <input type="text" id="bank-number">
+          </div>
+          <div class="form-group">
+            <label>Tipo de Cuenta</label>
+            <select id="bank-type">
+              <option value="corriente">Corriente</option>
+              <option value="ahorro">Ahorro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Saldo Inicial *</label>
+            <input type="number" step="0.01" id="bank-balance" required value="0">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-bank-form')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Cuenta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Movimiento Bancario -->
+  <div id="modal-bank-transaction" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Registrar Movimiento Bancario</h3>
+        <button class="modal-close" onclick="closeModal('modal-bank-transaction')">&times;</button>
+      </div>
+      <form id="form-bank-transaction" onsubmit="event.preventDefault(); submitBankTransaction();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Cuenta *</label>
+            <select id="btx-account" required></select>
+          </div>
+          <div class="form-group">
+            <label>Tipo *</label>
+            <select id="btx-type" required>
+              <option value="deposito">Depósito / Ingreso</option>
+              <option value="retiro">Retiro / Egreso</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto *</label>
+            <input type="number" step="0.01" id="btx-amount" required>
+          </div>
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="btx-date" required>
+          </div>
+          <div class="form-group">
+            <label>Descripción</label>
+            <input type="text" id="btx-description" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-bank-transaction')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Registrar Movimiento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Abrir Caja -->
+  <div id="modal-open-cash" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Abrir Caja</h3>
+        <button class="modal-close" onclick="closeModal('modal-open-cash')">&times;</button>
+      </div>
+      <form id="form-open-cash" onsubmit="event.preventDefault(); submitOpenCash();">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Saldo Inicial *</label>
+            <input type="number" step="0.01" id="cash-open-balance" required>
+          </div>
+          <div class="form-group">
+            <label>Notas (Opcional)</label>
+            <input type="text" id="cash-open-notes">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-open-cash')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Abrir Caja</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Cerrar Caja -->
+  <div id="modal-close-cash" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Cerrar Caja</h3>
+        <button class="modal-close" onclick="closeModal('modal-close-cash')">&times;</button>
+      </div>
+      <form id="form-close-cash" onsubmit="event.preventDefault(); submitCloseCash();">
+        <div class="modal-body">
+          <div class="alert alert-info mb-4">
+            Asegúrese de haber ingresado todos los cobros y cuadres antes de cerrar la caja.
+          </div>
+          <div class="form-group">
+            <label>Saldo Final (Efectivo Real) *</label>
+            <input type="number" step="0.01" id="cash-close-balance" required>
+          </div>
+          <div class="form-group">
+            <label>Notas (Opcional)</label>
+            <input type="text" id="cash-close-notes">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-close-cash')">Cancelar</button>
+          <button type="submit" class="btn btn-warning">Cerrar Caja Definitivamente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Cuadre de Denominaciones -->
+  <div id="modal-denominations" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Cuadre por Denominaciones</h3>
+        <button class="modal-close" onclick="closeModal('modal-denominations')">&times;</button>
+      </div>
+      <form id="form-denominations" onsubmit="event.preventDefault(); submitDenominations();">
+        <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+          <p class="text-muted mb-4">Ingresa la CANTIDAD de billetes o monedas (no el valor total).</p>
+          
+          <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label>Billetes de 2000</label>
+              <input type="number" id="den-2000" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Billetes de 1000</label>
+              <input type="number" id="den-1000" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Billetes de 500</label>
+              <input type="number" id="den-500" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Billetes de 200</label>
+              <input type="number" id="den-200" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Billetes de 100</label>
+              <input type="number" id="den-100" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Billetes de 50</label>
+              <input type="number" id="den-50" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Monedas de 25</label>
+              <input type="number" id="den-25" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Monedas de 10</label>
+              <input type="number" id="den-10" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Monedas de 5</label>
+              <input type="number" id="den-5" min="0" oninput="calcDenominationsTotal()">
+            </div>
+            <div class="form-group">
+              <label>Monedas de 1</label>
+              <input type="number" id="den-1" min="0" oninput="calcDenominationsTotal()">
+            </div>
+          </div>
+          <hr class="my-4">
+          <div class="flex justify-between items-center text-lg font-bold">
+            <span>Total Calculado:</span>
+            <span id="den-total-preview">$0.00</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-denominations')">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Cuadre</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- CONFIGURACION PARA PLAY STORE / NUBE -->
   <script>
     // En el celular (APK/Capacitor) usa Railway. En la PC usa el servidor local.
@@ -1307,7 +2144,12 @@
     }
   </script>
   
-  <script src="main.js?v=1"></script>
+  <script src="lucide.min.js"></script>
+  <script src="chart.min.js"></script>
+  <script src="jspdf.umd.min.js"></script>
+  <script src="jspdf.plugin.autotable.min.js"></script>
+  <script src="face-api.min.js"></script>
+  <script src="main.js?v=2"></script>
 
   <!-- Limpiar Service Workers y caches viejos -->
   <script>
@@ -1326,41 +2168,5 @@
       }
     }
   </script>
-  <!-- Modal para Crear/Editar Plan SaaS -->
-  <div class="modal-overlay" id="plan-modal" style="display: none;">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="plan-modal-title">Crear Plan SaaS</h3>
-        <button class="btn-icon" onclick="closePlanModal()"><i data-lucide="x"></i></button>
-      </div>
-      <form id="plan-form">
-        <input type="hidden" id="plan-id">
-        <div class="form-group">
-          <label>ID del Plan (ej: basico, premium)</label>
-          <input type="text" id="plan-id-input" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Nombre del Plan</label>
-          <input type="text" id="plan-name" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Precio Mensual ($)</label>
-          <input type="number" id="plan-price" class="form-control" step="0.01" required>
-        </div>
-        <div class="form-group">
-          <label>Límite de Préstamos</label>
-          <input type="number" id="plan-max-loans" class="form-control" required>
-        </div>
-        <div class="form-group">
-          <label>Límite de Usuarios</label>
-          <input type="number" id="plan-max-users" class="form-control" required>
-        </div>
-        <div class="modal-footer" style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
-          <button type="button" class="btn btn-secondary" onclick="closePlanModal()">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Guardar Plan</button>
-        </div>
-      </form>
-    </div>
-  </div>
 </body>
 </html>

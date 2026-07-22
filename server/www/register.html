@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crear Cuenta - PrestamosApp</title>
+  <meta name="description" content="Registra tu empresa y empieza a gestionar tus préstamos hoy.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    /* CONFIGURACION PARA PLAY STORE / NUBE */
+    /* En el celular (APK/Capacitor) usa Railway. En la PC usa el servidor local. */
+    if (window.Capacitor) {
+      window.PRESTAMOS_API_URL = 'https://prestamos-backend-production-1c7d.up.railway.app/api';
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --bg-card:   #1e293b;
+      --border:    #334155;
+      --primary:   #3b82f6;
+      --primary-h: #2563eb;
+      --success:   #22c55e;
+      --danger:    #ef4444;
+      --text:      #f1f5f9;
+      --muted:     #94a3b8;
+      --radius:    1rem;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── TOP NAV ─── */
+    .top-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      background: rgba(15,23,42,0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .top-nav .logo { font-size: 1.1rem; font-weight: 800; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; }
+    .top-nav .logo svg { width: 24px; height: 24px; }
+    .top-nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
+    .top-nav a:hover { color: var(--text); }
+    
+    @media (max-width: 480px) {
+      .top-nav { flex-direction: column; gap: 0.75rem; padding: 1rem; }
+    }
+
+    /* ─── HERO ─── */
+    .hero {
+      text-align: center;
+      padding: 3rem 1rem 2rem;
+    }
+    .hero h1 { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 800; line-height: 1.2; margin-bottom: 0.75rem; }
+    .hero h1 span { color: var(--primary); }
+    .hero p { color: var(--muted); font-size: 1.05rem; max-width: 500px; margin: 0 auto; }
+
+    /* ─── STEPS BAR ─── */
+    .steps {
+      display: flex; justify-content: center; gap: 0; margin: 2rem auto;
+      max-width: 420px; position: relative;
+    }
+    .steps::before {
+      content: ''; position: absolute; top: 17px; left: calc(50% - 100px);
+      width: 200px; height: 2px; background: var(--border); z-index: 0;
+    }
+    .step {
+      display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+      flex: 1; position: relative; z-index: 1;
+    }
+    .step-dot {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.9rem;
+      background: var(--bg-card); border: 2px solid var(--border); color: var(--muted);
+      transition: all 0.3s;
+    }
+    .step.active .step-dot { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .step.done .step-dot   { background: var(--success); border-color: var(--success); color: #fff; }
+    .step-label { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
+    .step.active .step-label { color: var(--primary); }
+    .step.done .step-label   { color: var(--success); }
+
+    /* ─── MAIN CONTAINER ─── */
+    .container { max-width: 960px; margin: 0 auto; padding: 0 1rem 4rem; }
+
+    /* ─── PLAN GRID ─── */
+    .plans-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1rem;
+    }
+    .plan-card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.25rem;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+      display: flex; flex-direction: column; gap: 0.75rem;
+    }
+    .plan-card:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(59,130,246,.18); }
+    .plan-card.selected {
+      border-color: var(--primary);
+      background: rgba(59,130,246,0.07);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+    }
+    .popular-tag {
+      position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+      background: var(--primary); color: #fff;
+      font-size: 0.68rem; font-weight: 700; padding: 3px 14px; border-radius: 20px;
+      letter-spacing: .04em; text-transform: uppercase;
+    }
+    .plan-name { font-size: 1.1rem; font-weight: 700; }
+    .plan-price {
+      font-size: 2rem; font-weight: 800; color: var(--primary);
+      display: flex; align-items: baseline; gap: 4px;
+    }
+    .plan-price small { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
+    .plan-features { list-style: none; padding: 0; }
+    .plan-features li {
+      font-size: 0.85rem; color: var(--muted);
+      padding: 0.22rem 0; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .plan-features li::before { content: '✓'; color: var(--success); font-weight: 700; font-size: 0.9rem; }
+    .select-btn {
+      margin-top: auto;
+      padding: 0.55rem; border-radius: 0.6rem; border: 1.5px solid var(--primary);
+      background: transparent; color: var(--primary); font-weight: 600; font-size: 0.9rem;
+      cursor: pointer; transition: background 0.2s, color 0.2s;
+    }
+    .plan-card.selected .select-btn { background: var(--primary); color: #fff; }
+    .select-btn:hover { background: var(--primary); color: #fff; }
+
+    /* ─── FORM SECTION ─── */
+    .form-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      margin-top: 0.5rem;
+    }
+    .form-card h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 1.5rem; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .plans-grid { grid-template-columns: 1fr 1fr; } }
+    .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+    .form-group label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+    .form-group input {
+      padding: 0.6rem 0.85rem;
+      background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 0.6rem; color: var(--text); font-size: 0.95rem;
+      transition: border-color 0.2s;
+      outline: none; width: 100%;
+    }
+    .form-group input:focus { border-color: var(--primary); }
+    .plan-summary {
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 0.75rem;
+      padding: 0.9rem 1.2rem;
+      margin-bottom: 1.25rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.9rem;
+    }
+    .plan-summary strong { color: var(--primary); }
+    .plan-badge { background: var(--primary); color: #fff; border-radius: 0.4rem; padding: 0.2rem 0.6rem; font-size: 0.78rem; font-weight: 700; }
+    .free-badge { background: var(--success); color: #fff; border-radius: 0.4rem; padding: 0.2rem 0.6rem; font-size: 0.78rem; font-weight: 700; }
+
+    /* ─── BUTTONS ─── */
+    .btn-primary {
+      width: 100%; padding: 0.8rem; border-radius: 0.75rem; border: none;
+      background: var(--primary); color: #fff; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background 0.2s, transform 0.1s;
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    .btn-primary:hover { background: var(--primary-h); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-back {
+      background: none; border: 1.5px solid var(--border); color: var(--muted);
+      border-radius: 0.6rem; padding: 0.5rem 1rem; font-size: 0.9rem;
+      cursor: pointer; margin-bottom: 1rem; transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-back:hover { border-color: var(--text); color: var(--text); }
+
+    /* ─── ERROR / SUCCESS ─── */
+    .error-msg {
+      background: rgba(239,68,68,.12); border: 1px solid var(--danger);
+      color: #fca5a5; border-radius: 0.6rem; padding: 0.65rem 1rem;
+      font-size: 0.88rem; margin-bottom: 1rem; display: none;
+    }
+    .success-screen {
+      display: none; text-align: center; padding: 3rem 1rem;
+    }
+    .success-icon {
+      width: 80px; height: 80px; background: rgba(34,197,94,.15);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.5rem; font-size: 2.5rem;
+    }
+    .success-screen h2 { font-size: 1.8rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .success-screen p { color: var(--muted); margin-bottom: 2rem; }
+    .cred-box {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 0.75rem; padding: 1.25rem 1.5rem;
+      display: inline-flex; flex-direction: column; gap: 0.5rem;
+      text-align: left; margin: 0 auto 2rem; min-width: 260px;
+    }
+    .cred-row { display: flex; justify-content: space-between; gap: 1.5rem; font-size: 0.9rem; }
+    .cred-row span { color: var(--muted); }
+    .cred-row strong { color: var(--text); }
+    .btn-go {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: var(--success); color: #fff; border: none;
+      border-radius: 0.75rem; padding: 0.8rem 2rem; font-size: 1rem;
+      font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity 0.2s;
+    }
+    .btn-go:hover { opacity: 0.88; }
+
+    /* ─── LOADING ─── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 3px solid rgba(255,255,255,.4); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .section { display: none; }
+    .section.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- TOP NAV -->
+  <nav class="top-nav">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+      </svg>
+      PrestamosApp
+    </div>
+    <a href="/">← Volver al inicio de sesión</a>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>Empieza a gestionar tus<br><span>préstamos hoy</span></h1>
+    <p>Elige tu plan, crea tu cuenta y accede al sistema en menos de 2 minutos.</p>
+  </div>
+
+  <!-- STEPS -->
+  <div class="steps" id="steps-bar">
+    <div class="step active" id="step-1">
+      <div class="step-dot">1</div>
+      <div class="step-label">Elige plan</div>
+    </div>
+    <div class="step" id="step-2">
+      <div class="step-dot">2</div>
+      <div class="step-label">Crea tu cuenta</div>
+    </div>
+    <div class="step" id="step-3">
+      <div class="step-dot">3</div>
+      <div class="step-label">¡Listo!</div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- ── PASO 1: PLANES ── -->
+    <div class="section active" id="sec-plans">
+      <div id="plans-loading" style="text-align:center;padding:3rem;color:var(--muted)">Cargando planes...</div>
+      <div class="plans-grid" id="plans-grid" style="display:none"></div>
+    </div>
+
+    <!-- ── PASO 2: FORMULARIO ── -->
+    <div class="section" id="sec-form">
+      <button class="btn-back" onclick="goBack()">← Cambiar plan</button>
+
+      <div class="plan-summary" id="selected-plan-summary">
+        📋 Plan seleccionado: <strong id="sp-name">—</strong>
+        <span class="plan-badge" id="sp-price">—</span>
+        <span style="margin-left:auto;color:var(--muted);font-size:0.8rem">5 días de prueba gratis</span>
+      </div>
+
+      <div class="form-card">
+        <h2>📝 Datos de tu empresa y usuario</h2>
+
+        <div id="reg-error" class="error-msg"></div>
+
+        <form id="reg-form" onsubmit="submitRegister(event)">
+          <div class="form-group">
+            <label>Nombre de tu empresa / negocio *</label>
+            <input type="text" id="f-company" placeholder="Ej: Préstamos García" required autocomplete="organization">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nombre de usuario *</label>
+              <input type="text" id="f-username" placeholder="Ej: garcia2024" required autocomplete="username"
+                pattern="[a-zA-Z0-9_\-]+" title="Solo letras, números, guiones o guion_bajo" oninput="this.value = this.value.replace(/\s/g, '')">
+            </div>
+            <div class="form-group">
+              <label>Contraseña *</label>
+              <input type="password" id="f-password" placeholder="Mínimo 6 caracteres" required minlength="6" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Confirmar contraseña *</label>
+            <input type="password" id="f-password2" placeholder="Repite tu contraseña" required autocomplete="new-password">
+          </div>
+
+          <button type="submit" class="btn-primary" id="reg-btn">
+            <span id="reg-btn-text">🚀 Crear mi cuenta gratis</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── PASO 3: ÉXITO ── -->
+    <div class="section" id="sec-success">
+      <div class="success-screen" style="display:block">
+        <div class="success-icon">✅</div>
+        <h2>¡Cuenta creada exitosamente!</h2>
+        <p>Tu empresa está registrada con 5 días de acceso gratuito.<br>Usa tus credenciales para ingresar al sistema.</p>
+
+        <div class="cred-box">
+          <div class="cred-row"><span>Usuario:</span><strong id="done-username">—</strong></div>
+          <div class="cred-row"><span>Empresa:</span><strong id="done-company">—</strong></div>
+          <div class="cred-row"><span>Plan:</span><strong id="done-plan">—</strong></div>
+          <div class="cred-row"><span>Prueba gratuita:</span><span class="free-badge">5 días</span></div>
+        </div>
+
+        <a href="/" class="btn-go">▶ Ir al sistema →</a>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+
+  <script>
+    // Usar la URL inyectada por Capacitor o la local/relativa si estamos en web
+    const BASE = window.PRESTAMOS_API_URL || (window.location.origin + '/api');
+    let selectedPlan = null;
+
+    /* ── Cargar planes ── */
+    async function loadPlans() {
+      try {
+        const res = await fetch(BASE + '/saas/public-plans');
+        const plans = await res.json();
+        document.getElementById('plans-loading').style.display = 'none';
+        const grid = document.getElementById('plans-grid');
+        grid.style.display = 'grid';
+
+        if (!Array.isArray(plans) || !plans.length) {
+          grid.innerHTML = '<p style="color:var(--muted);grid-column:1/-1">No hay planes disponibles en este momento.</p>';
+          return;
+        }
+
+        plans.sort((a, b) => a.price - b.price);
+        plans.forEach(p => {
+          let features = [];
+          try { features = JSON.parse(p.features || '[]'); } catch {}
+          if (!features.length) {
+            features = [
+              `${p.max_users} usuario${p.max_users > 1 ? 's' : ''}`,
+              `${p.max_loans >= 99999 ? 'Préstamos ilimitados' : p.max_loans + ' préstamos activos'}`,
+              'Acceso web y móvil',
+              'Soporte incluido'
+            ];
+          }
+
+          const card = document.createElement('div');
+          card.className = 'plan-card' + (p.is_popular ? ' popular' : '');
+          card.id = 'pcard-' + p.id;
+          card.innerHTML = `
+            ${p.is_popular ? '<div class="popular-tag">⭐ Más popular</div>' : ''}
+            <div class="plan-name">${p.name}</div>
+            <div class="plan-price">
+              RD$${Number(p.price).toLocaleString('es-ES')}
+              <small>/ mes</small>
+            </div>
+            <ul class="plan-features">
+              ${features.map(f => `<li>${f}</li>`).join('')}
+            </ul>
+            <button class="select-btn" onclick="selectPlan('${p.id}','${p.name}',${p.price})">
+              Elegir este plan
+            </button>
+          `;
+          card.addEventListener('click', () => selectPlan(p.id, p.name, p.price));
+          grid.appendChild(card);
+        });
+      } catch (e) {
+        document.getElementById('plans-loading').textContent = 'Error cargando planes: ' + e.message;
+      }
+    }
+
+    function selectPlan(id, name, price) {
+      selectedPlan = { id, name, price };
+
+      // Highlight card
+      document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+      const card = document.getElementById('pcard-' + id);
+      if (card) card.classList.add('selected');
+
+      // Ir al paso 2 con pequeña animación
+      setTimeout(() => {
+        document.getElementById('sp-name').textContent = name;
+        document.getElementById('sp-price').textContent = 'RD$' + Number(price).toLocaleString('es-ES') + '/mes';
+        showSection('sec-form');
+        setStep(2);
+      }, 180);
+    }
+
+    function goBack() {
+      showSection('sec-plans');
+      setStep(1);
+    }
+
+    /* ── Registro ── */
+    async function submitRegister(e) {
+      e.preventDefault();
+      const errDiv = document.getElementById('reg-error');
+      errDiv.style.display = 'none';
+
+      const companyName = document.getElementById('f-company').value.trim();
+      const username    = document.getElementById('f-username').value.trim();
+      const password    = document.getElementById('f-password').value;
+      const password2   = document.getElementById('f-password2').value;
+
+      if (password !== password2) {
+        return showError('Las contraseñas no coinciden.');
+      }
+      if (!selectedPlan) {
+        return showError('Por favor selecciona un plan primero.');
+      }
+
+      const btn     = document.getElementById('reg-btn');
+      const btnText = document.getElementById('reg-btn-text');
+      btn.disabled  = true;
+      btnText.innerHTML = '<span class="spinner"></span> Creando cuenta...';
+
+      try {
+        const res = await fetch(BASE + '/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyName,
+            username,
+            password,
+            plan: selectedPlan.id
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error al registrar');
+
+        // Éxito
+        document.getElementById('done-username').textContent = username;
+        document.getElementById('done-company').textContent  = companyName;
+        document.getElementById('done-plan').textContent     = selectedPlan.name;
+
+        showSection('sec-success');
+        setStep(3);
+        document.getElementById('steps-bar').style.display = 'flex';
+
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled  = false;
+        btnText.innerHTML = '🚀 Crear mi cuenta gratis';
+      }
+    }
+
+    function showError(msg) {
+      const d = document.getElementById('reg-error');
+      d.textContent = '⚠️ ' + msg;
+      d.style.display = 'block';
+      d.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    /* ── Helpers de navegación ── */
+    function showSection(id) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function setStep(n) {
+      for (let i = 1; i <= 3; i++) {
+        const el = document.getElementById('step-' + i);
+        el.classList.remove('active', 'done');
+        if (i < n) el.classList.add('done');
+        else if (i === n) el.classList.add('active');
+      }
+    }
+
+    loadPlans();
+  </script>
+</body>
+</html>

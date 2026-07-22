@@ -15,4 +15,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # Railway injects PORT; server.js binds to it automatically
-CMD ["node", "server/server.js"]
+CMD ["node", "server.js"]

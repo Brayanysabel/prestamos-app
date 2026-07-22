@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planes de Suscripción - PrestamosApp</title>
+  <link rel="stylesheet" href="style.css?v=3" />
+  <style>
+    body { background: var(--bg, #0f172a); color: var(--text, #e2e8f0); font-family: 'Inter', sans-serif; }
+    .page-wrapper { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+    .page-header { text-align: center; margin-bottom: 2.5rem; }
+    .page-header h1 { font-size: 2rem; font-weight: 700; color: var(--primary, #3b82f6); margin-bottom: 0.5rem; }
+    .page-header p { color: var(--text-muted, #94a3b8); }
+
+    /* Grid de cards */
+    .plans-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1.5rem;
+    }
+    .plan-card {
+      background: var(--bg-card, #1e293b);
+      border: 1px solid var(--border, #334155);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+    .plan-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .plan-card.popular { border-color: var(--primary, #3b82f6); }
+    .popular-badge {
+      position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+      background: var(--primary, #3b82f6); color: #fff;
+      font-size: 0.7rem; font-weight: 700; padding: 2px 12px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .plan-name { font-size: 1.2rem; font-weight: 700; }
+    .plan-price { font-size: 2rem; font-weight: 800; color: var(--primary, #3b82f6); }
+    .plan-price span { font-size: 0.9rem; font-weight: 400; color: var(--text-muted, #94a3b8); }
+    .plan-features { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: var(--text-muted, #94a3b8); }
+    .plan-features li { padding: 0.25rem 0; display: flex; align-items: center; gap: 0.5rem; }
+    .plan-features li.yes::before { content: '✓'; color: #22c55e; font-weight: 700; }
+    .plan-features li.no::before { content: '❌'; font-size: 0.8rem; }
+
+    /* Botones de admin */
+    .admin-actions {
+      display: none;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border, #334155);
+    }
+    .admin-mode .admin-actions { display: flex; }
+    .btn { padding: 0.4rem 0.8rem; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.85; }
+    .btn-edit { background: var(--primary, #3b82f6); color: #fff; flex: 1; }
+    .btn-delete { background: #ef4444; color: #fff; }
+    .btn-add { background: #22c55e; color: #fff; padding: 0.6rem 1.5rem; font-size: 0.95rem; }
+
+    /* Barra admin */
+    .admin-bar {
+      display: none;
+      background: rgba(59,130,246,0.1);
+      border: 1px solid var(--primary, #3b82f6);
+      border-radius: 0.75rem;
+      padding: 1rem 1.5rem;
+      margin-bottom: 2rem;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .admin-mode .admin-bar { display: flex; }
+    .admin-bar span { font-size: 0.9rem; color: var(--primary, #3b82f6); font-weight: 600; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: var(--bg-card, #1e293b); border-radius: 1rem; padding: 2rem; width: 100%; max-width: 420px; }
+    .modal-box h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.35rem; color: var(--text-muted, #94a3b8); }
+    .form-group input { width: 100%; padding: 0.5rem 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border, #334155); background: var(--bg, #0f172a); color: var(--text, #e2e8f0); font-size: 0.95rem; box-sizing: border-box; }
+    .form-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+    .btn-cancel { background: var(--border, #334155); color: var(--text, #e2e8f0); flex: 1; padding: 0.6rem; border-radius: 0.5rem; border: none; cursor: pointer; font-weight: 600; }
+    .btn-save { background: var(--primary, #3b82f6); color: #fff; flex: 2; padding: 0.6rem; border-radius: 0.5rem; border: none; cursor: pointer; font-weight: 700; }
+    .empty { text-align: center; padding: 3rem; color: var(--text-muted, #94a3b8); }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 2rem; right: 2rem; background: #22c55e; color: #fff; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+    #toast.error { background: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper" id="app-root">
+    <div class="page-header">
+      <h1>📋 Planes de Suscripción</h1>
+      <p>Gestiona los planes disponibles para los prestamistas</p>
+    </div>
+
+    <!-- Barra visible solo para superadmin -->
+    <div class="admin-bar">
+      <span>🛡️ Modo Administrador — Puedes crear, editar y eliminar planes</span>
+      <button class="btn btn-add" onclick="openModal()">+ Nuevo Plan</button>
+    </div>
+
+    <!-- Grid de planes -->
+    <div class="plans-grid" id="plans-container">
+      <p class="empty">Cargando planes...</p>
+    </div>
+  </div>
+
+  <!-- Modal crear/editar plan -->
+  <div class="modal-overlay" id="plan-modal">
+    <div class="modal-box">
+      <h2 id="modal-title">Nuevo Plan</h2>
+      <form id="plan-form" onsubmit="savePlan(event)">
+        <div class="form-group">
+          <label>ID del Plan <small>(sin espacios, ej: basico)</small></label>
+          <input type="text" id="f-id" required pattern="[a-z0-9_]+" title="Solo minúsculas, números y _">
+        </div>
+        <div class="form-group">
+          <label>Nombre visible</label>
+          <input type="text" id="f-name" required>
+        </div>
+        <div class="form-group">
+          <label>Precio mensual (RD$)</label>
+          <input type="number" id="f-price" min="0" step="1" required>
+        </div>
+        <div class="form-group">
+          <label>Límite de préstamos activos</label>
+          <input type="number" id="f-loans" min="1" required>
+        </div>
+        <div class="form-group">
+          <label>Límite de usuarios</label>
+          <input type="number" id="f-users" min="1" required>
+        </div>
+        <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+          <label><input type="checkbox" id="f-docs"> Documentos</label>
+          <label><input type="checkbox" id="f-guarantees"> Garantías</label>
+          <label><input type="checkbox" id="f-debugger"> Depurador</label>
+          <label><input type="checkbox" id="f-whatsapp"> WhatsApp</label>
+          <label><input type="checkbox" id="f-finances"> Finanzas</label>
+          <label><input type="checkbox" id="f-denominations"> Denominaciones</label>
+          <label><input type="checkbox" id="f-expenses"> Gastos</label>
+          <label><input type="checkbox" id="f-banks"> Bancos</label>
+          <label><input type="checkbox" id="f-cash"> Caja</label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
+          <button type="submit" class="btn-save">💾 Guardar Plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const BASE = window.location.origin + '/api';
+    let editingId = null;
+    let isSuperAdmin = false;
+
+    function getToken() {
+      return localStorage.getItem('prestamos_auth_token');
+    }
+
+    async function api(endpoint, options = {}) {
+      const token = getToken();
+      const res = await fetch(BASE + endpoint, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'x-auth-token': token } : {}),
+          ...(options.headers || {})
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || 'Error en la solicitud');
+      }
+      return res.json();
+    }
+
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = isError ? 'error' : '';
+      t.style.display = 'block';
+      setTimeout(() => t.style.display = 'none', 3000);
+    }
+
+    async function checkSuperAdmin() {
+      const token = getToken();
+      if (!token) return false;
+      try {
+        // Verificar si el token del usuario es superadmin intentando acceder al endpoint protegido
+        await api('/saas/plans');
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function loadPlans() {
+      const container = document.getElementById('plans-container');
+      try {
+        // Detectar si es superadmin
+        isSuperAdmin = await checkSuperAdmin();
+        if (isSuperAdmin) {
+          document.getElementById('app-root').classList.add('admin-mode');
+        }
+
+        const plans = await api('/saas/public-plans');
+        container.innerHTML = '';
+
+        if (!Array.isArray(plans) || plans.length === 0) {
+          container.innerHTML = '<p class="empty">No hay planes disponibles.</p>';
+          return;
+        }
+
+        plans.sort((a, b) => a.price - b.price);
+        plans.forEach(p => renderPlanCard(p, container));
+
+      } catch (e) {
+        container.innerHTML = `<p class="empty" style="color:#ef4444">Error: ${e.message}</p>`;
+      }
+    }
+
+    function renderPlanCard(p, container) {
+      const card = document.createElement('div');
+      card.className = 'plan-card' + (p.is_popular ? ' popular' : '');
+      card.id = 'card-' + p.id;
+
+      let featuresHTML = `
+        <li class="yes">${p.max_loans >= 999999 ? 'Ilimitados' : p.max_loans} préstamos</li>
+        <li class="yes">${p.max_users} Usuario${p.max_users > 1 ? 's' : ''}</li>
+        <li class="yes">Clientes ilimitados</li>
+        <li class="yes">Agenda de cobro</li>
+        <li class="yes">Reportes</li>
+        <li class="yes">Cuadre</li>
+        <li class="yes">Backup diario</li>
+        <li class="${p.allow_documents ? 'yes' : 'no'}">Documentos</li>
+        <li class="${p.allow_guarantees ? 'yes' : 'no'}">Garantías</li>
+        <li class="${p.allow_debugger ? 'yes' : 'no'}">Depurador</li>
+        <li class="${p.allow_whatsapp ? 'yes' : 'no'}">Recordatorio por WhatsApp</li>
+        <li class="${p.allow_finances ? 'yes' : 'no'}">Finanzas</li>
+        <li class="${p.allow_denominations ? 'yes' : 'no'}">Cuadre por denominaciones</li>
+        <li class="${p.allow_expenses ? 'yes' : 'no'}">Gastos</li>
+        <li class="${p.allow_banks ? 'yes' : 'no'}">Bancos</li>
+        <li class="${p.allow_cash ? 'yes' : 'no'}">Caja</li>
+      `;
+
+      card.innerHTML = `
+        ${p.is_popular ? '<div class="popular-badge">⭐ Popular</div>' : ''}
+        <div class="plan-name">${p.name}</div>
+        <div class="plan-price">RD$${Number(p.price).toLocaleString('es-ES')}<span> / mes</span></div>
+        <ul class="plan-features">
+          ${featuresHTML}
+        </ul>
+        <div class="admin-actions">
+          <button class="btn btn-edit" onclick="openModal(${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ Editar</button>
+          <button class="btn btn-delete" onclick="deletePlan('${p.id}', '${p.name}')">🗑️</button>
+        </div>
+      `;
+      container.appendChild(card);
+    }
+
+    function openModal(plan = null) {
+      editingId = plan ? plan.id : null;
+      document.getElementById('modal-title').textContent = plan ? '✏️ Editar Plan' : '➕ Nuevo Plan';
+      document.getElementById('f-id').value = plan ? plan.id : '';
+      document.getElementById('f-id').readOnly = !!plan;
+      document.getElementById('f-id').style.opacity = plan ? '0.5' : '1';
+      document.getElementById('f-name').value = plan ? plan.name : '';
+      document.getElementById('f-price').value = plan ? plan.price : '';
+      document.getElementById('f-loans').value = plan ? plan.max_loans : '';
+      document.getElementById('f-users').value = plan ? plan.max_users : '';
+      document.getElementById('f-docs').checked = plan ? !!plan.allow_documents : false;
+      document.getElementById('f-guarantees').checked = plan ? !!plan.allow_guarantees : false;
+      document.getElementById('f-debugger').checked = plan ? !!plan.allow_debugger : false;
+      document.getElementById('f-whatsapp').checked = plan ? !!plan.allow_whatsapp : false;
+      document.getElementById('f-finances').checked = plan ? !!plan.allow_finances : false;
+      document.getElementById('f-denominations').checked = plan ? !!plan.allow_denominations : false;
+      document.getElementById('f-expenses').checked = plan ? !!plan.allow_expenses : false;
+      document.getElementById('f-banks').checked = plan ? !!plan.allow_banks : false;
+      document.getElementById('f-cash').checked = plan ? !!plan.allow_cash : false;
+      document.getElementById('plan-modal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('plan-modal').classList.remove('active');
+      document.getElementById('plan-form').reset();
+      editingId = null;
+    }
+
+    async function savePlan(e) {
+      e.preventDefault();
+      const data = {
+        id: document.getElementById('f-id').value.trim().toLowerCase(),
+        name: document.getElementById('f-name').value.trim(),
+        price: parseFloat(document.getElementById('f-price').value),
+        max_loans: parseInt(document.getElementById('f-loans').value),
+        max_users: parseInt(document.getElementById('f-users').value),
+        allow_documents: document.getElementById('f-docs').checked ? 1 : 0,
+        allow_guarantees: document.getElementById('f-guarantees').checked ? 1 : 0,
+        allow_debugger: document.getElementById('f-debugger').checked ? 1 : 0,
+        allow_whatsapp: document.getElementById('f-whatsapp').checked ? 1 : 0,
+        allow_finances: document.getElementById('f-finances').checked ? 1 : 0,
+        allow_denominations: document.getElementById('f-denominations').checked ? 1 : 0,
+        allow_expenses: document.getElementById('f-expenses').checked ? 1 : 0,
+        allow_banks: document.getElementById('f-banks').checked ? 1 : 0,
+        allow_cash: document.getElementById('f-cash').checked ? 1 : 0
+      };
+      try {
+        if (editingId) {
+          await api('/saas/plans/' + editingId, { method: 'PUT', body: JSON.stringify(data) });
+          showToast('✅ Plan actualizado correctamente');
+        } else {
+          await api('/saas/plans', { method: 'POST', body: JSON.stringify(data) });
+          showToast('✅ Plan creado correctamente');
+        }
+        closeModal();
+        loadPlans();
+      } catch (err) {
+        showToast('❌ Error: ' + err.message, true);
+      }
+    }
+
+    async function deletePlan(id, name) {
+      if (!confirm(`¿Seguro que deseas eliminar el plan "${name}"?\n\nEsta acción no se puede deshacer.`)) return;
+      try {
+        await api('/saas/plans/' + id, { method: 'DELETE' });
+        // Remover card con animación
+        const card = document.getElementById('card-' + id);
+        if (card) {
+          card.style.transition = 'opacity 0.3s, transform 0.3s';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(0.9)';
+          setTimeout(() => card.remove(), 300);
+        }
+        showToast('🗑️ Plan "' + name + '" eliminado');
+      } catch (err) {
+        showToast('❌ Error al eliminar: ' + err.message, true);
+      }
+    }
+
+    // Cerrar modal al hacer click fuera
+    document.getElementById('plan-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    loadPlans();
+  </script>
+</body>
+</html>

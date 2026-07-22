@@ -25,7 +25,10 @@ let statusChartInstance = null;
 
 // --- 2. PERSISTENCIA DE DATOS Y API ---
 
-const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
+// Si estamos en un dispositivo móvil (Capacitor usa http://localhost), apuntamos al servidor local en la red WiFi.
+// Reemplaza esta IP con la IP pública de tu VPS o servidor cuando vayas a producción.
+const IS_CAPACITOR = window.location.origin.includes('localhost') && !window.location.port; 
+const API_URL = window.PRESTAMOS_API_URL || (IS_CAPACITOR ? 'http://192.168.56.44:3000/api' : window.location.origin + '/api');
 
 // --- LIMPIEZA FORZADA DE CACHÉ Y SERVICE WORKER ---
 (function cleanCacheAndSW() {
@@ -54,13 +57,12 @@ const API_URL = window.PRESTAMOS_API_URL || 'http://localhost:8080/api';
 function getAuthToken() {
   return localStorage.getItem('prestamos_auth_token');
 }
-
 async function apiRequest(endpoint, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(token && { 'X-Auth-Token': token }),
-    ...options.headers
+    ...(token ? { 'x-auth-token': token } : {}),
+    ...(options.headers || {})
   };
   
   const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
@@ -75,6 +77,35 @@ async function apiRequest(endpoint, options = {}) {
     throw new Error(data.error || 'Error en la solicitud');
   }
   return data;
+}
+
+// Utility para verificar características del plan
+function hasFeature(featureName) {
+  const isSuperAdmin = localStorage.getItem('prestamos_is_superadmin') === 'true';
+  if (isSuperAdmin) return true; // Superadmin tiene todo
+  
+  try {
+    const featuresStr = localStorage.getItem('prestamos_plan_features');
+    if (!featuresStr) return false;
+    const features = JSON.parse(featuresStr);
+    return !!features[featureName];
+  } catch (e) {
+    return false;
+  }
+}
+
+function getPlanLimit(limitName, fallback = Infinity) {
+  const isSuperAdmin = localStorage.getItem('prestamos_is_superadmin') === 'true';
+  if (isSuperAdmin) return Infinity;
+  
+  try {
+    const featuresStr = localStorage.getItem('prestamos_plan_features');
+    if (!featuresStr) return fallback;
+    const features = JSON.parse(featuresStr);
+    return features[limitName] !== undefined ? features[limitName] : fallback;
+  } catch (e) {
+    return fallback;
+  }
 }
 
 async function loadData() {
@@ -93,7 +124,20 @@ async function loadData() {
   // Mi Plan solo visible para usuarios/inquilinos, NO para el Super Admin
   const plansNav = document.getElementById('nav-plans');
   if (plansNav) {
-    plansNav.style.display = !isSuperAdmin ? 'flex' : 'none';
+    // El cliente solicitó ocultar los planes para usuarios nuevos/normales
+    plansNav.style.display = 'none';
+  }
+  
+  // Ocultar Gestión de Usuarios a empleados normales
+  const usersCard = document.getElementById('settings-users-card');
+  if (usersCard) {
+    usersCard.style.display = isSuperAdmin ? 'block' : 'none';
+  }
+
+  // Ocultar Gestión de Datos a empleados normales
+  const dataMgmtCard = document.getElementById('settings-data-mgmt-card');
+  if (dataMgmtCard) {
+    dataMgmtCard.style.display = isSuperAdmin ? 'block' : 'none';
   }
 
   showApp();
@@ -125,6 +169,21 @@ function showApp() {
   let appWrapper = document.getElementById('app-wrapper');
   if (!appWrapper) appWrapper = document.getElementById('main-app');
   if (appWrapper) appWrapper.classList.remove('d-none');
+  
+  if (hasFeature('allow_guarantees')) { const el = document.getElementById('nav-guarantees'); if(el) el.style.display = 'block'; }
+  if (hasFeature('allow_finances')) { const el = document.getElementById('nav-finances'); if(el) el.style.display = 'block'; }
+  if (hasFeature('allow_expenses')) { const el = document.getElementById('nav-expenses'); if(el) el.style.display = 'block'; }
+  if (hasFeature('allow_banks')) { const el = document.getElementById('nav-banks'); if(el) el.style.display = 'block'; }
+  if (hasFeature('allow_cash')) { const el = document.getElementById('nav-cash'); if(el) el.style.display = 'block'; }
+  if (hasFeature('allow_debugger')) { const el = document.getElementById('nav-debugger'); if(el) el.style.display = 'block'; }
+  
+  // Controlar acceso a PDF según plan
+  const canUseDocs = hasFeature('allow_documents');
+  const pdfBtns = ['export-clients-pdf-btn', 'export-loans-pdf-btn'];
+  pdfBtns.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = canUseDocs ? '' : 'none';
+  });
 }
 
 function showLogin() {
@@ -134,6 +193,17 @@ function showLogin() {
   let appWrapper = document.getElementById('app-wrapper');
   if (!appWrapper) appWrapper = document.getElementById('main-app');
   if (appWrapper) appWrapper.classList.add('d-none');
+  
+  // Limpiar campos de login al cerrar sesión
+  const userEl = document.getElementById('login-username');
+  const passEl = document.getElementById('login-password');
+  const errorEl = document.getElementById('login-error');
+  if (userEl) userEl.value = '';
+  if (passEl) passEl.value = '';
+  if (errorEl) {
+    errorEl.classList.add('d-none');
+    errorEl.textContent = '';
+  }
 }
 
 // Lógica del formulario de login
@@ -155,12 +225,22 @@ if (loginForm) {
       if (!res.ok) throw new Error(data.error || 'Error de autenticación');
       
       localStorage.setItem('prestamos_auth_token', data.token);
+      if (data.role) localStorage.setItem('prestamos_user_role', data.role);
+      
       if (data.isSuperAdmin) {
         localStorage.setItem('prestamos_is_superadmin', 'true');
       } else {
         localStorage.removeItem('prestamos_is_superadmin');
       }
+      
+      if (data.planFeatures) {
+        localStorage.setItem('prestamos_plan_features', JSON.stringify(data.planFeatures));
+      } else {
+        localStorage.removeItem('prestamos_plan_features');
+      }
+      
       errorEl.classList.add('d-none');
+      showApp();
       loadData();
     } catch (err) {
       errorEl.textContent = err.message;
@@ -353,6 +433,44 @@ function calculateAmortization(amount, annualRate, term, frequency, type, startD
       totalPayable += fixedPayment;
       interestAmount += interest;
     }
+  } else if (type === 'german') {
+    // Sistema Alemán: Amortización de capital constante, intereses decrecientes
+    let capitalPerPeriod = parseFloat((amount / term).toFixed(2));
+    let remainingBalance = amount;
+    
+    for (let i = 1; i <= term; i++) {
+      let interest = parseFloat((remainingBalance * ratePerPeriod).toFixed(2));
+      let capital = capitalPerPeriod;
+      
+      if (i === term) {
+        capital = remainingBalance;
+      }
+      
+      let payment = parseFloat((capital + interest).toFixed(2));
+      
+      remainingBalance = parseFloat((remainingBalance - capital).toFixed(2));
+      if (remainingBalance < 0) remainingBalance = 0;
+      
+      let dueDate = new Date(start);
+      if (frequency === 'monthly') dueDate.setMonth(dueDate.getMonth() + i);
+      else if (frequency === 'biweekly') dueDate.setDate(dueDate.getDate() + i * 14);
+      else if (frequency === 'weekly') dueDate.setDate(dueDate.getDate() + i * 7);
+      else if (frequency === 'daily') dueDate.setDate(dueDate.getDate() + i * 1);
+      
+      instalments.push({
+        index: i,
+        dueDate: dueDate.toISOString().split('T')[0],
+        amount: payment,
+        capital: capital,
+        interest: interest,
+        paid: 0,
+        status: 'pending',
+        payments: []
+      });
+      
+      totalPayable += payment;
+      interestAmount += interest;
+    }
   } else {
     // Interés Simple
     // Total Interés = Principal * Tasa Periodo * Term
@@ -452,7 +570,13 @@ const sectionMeta = {
     'calculator': { title: 'Calculadora de Préstamos', subtitle: 'Simula y genera nuevos préstamos' },
     'settings': { title: 'Configuración', subtitle: 'Ajustes del sistema y usuarios' },
     'plans': { title: 'Mi Plan', subtitle: 'Gestiona tu suscripción y límites' },
-    'superadmin': { title: 'Administración Global', subtitle: 'Gestión SaaS de inquilinos y planes' }
+    'superadmin': { title: 'Administración Global', subtitle: 'Gestión SaaS de inquilinos y planes' },
+    'guarantees': { title: 'Garantías', subtitle: 'Administra las garantías de los préstamos' },
+    'finances': { title: 'Finanzas', subtitle: 'Análisis global del negocio' },
+    'expenses': { title: 'Gastos Operativos', subtitle: 'Registra y controla los gastos' },
+    'banks': { title: 'Cuentas Bancarias', subtitle: 'Gestión de bancos y saldo' },
+    'cash': { title: 'Control de Caja', subtitle: 'Apertura y cierre de caja diario' },
+    'debugger': { title: 'Debugger', subtitle: 'Herramientas de depuración' }
 };
 
 function switchSection(targetSectionId) {
@@ -495,6 +619,27 @@ function switchSection(targetSectionId) {
     renderPlansSection();
   } else if (targetSectionId === 'superadmin') {
     renderSuperAdminSection();
+  } else if (targetSectionId === 'guarantees') {
+    loadGuarantees();
+  } else if (targetSectionId === 'expenses') {
+    loadExpenses();
+  } else if (targetSectionId === 'banks') {
+    loadBanks();
+    loadBankTransactions();
+  } else if (targetSectionId === 'cash') {
+    loadCashStatus();
+    loadCashHistory();
+    loadDenominations();
+  } else if (targetSectionId === 'finances') {
+    loadFinancesSummary();
+  } else if (targetSectionId === 'debugger') {
+    loadDebuggerSection();
+  }
+  
+  // Ocultar botón 'Nuevo Préstamo' en el panel de administrador global
+  const quickLoanBtn = document.getElementById('quick-loan-btn');
+  if (quickLoanBtn) {
+    quickLoanBtn.style.display = targetSectionId === 'superadmin' ? 'none' : 'inline-flex';
   }
 }
 
@@ -540,12 +685,22 @@ if (sidebarOverlay) {
   const quickLoanBtn = document.getElementById('quick-loan-btn');
   if (quickLoanBtn) {
     quickLoanBtn.addEventListener('click', () => {
+      const maxLoans = getPlanLimit('max_loans');
+      if (state.loans && state.loans.length >= maxLoans) {
+        alert('Ha alcanzado el límite de préstamos activos de su plan. Comuníquese con ventas para mejorar su plan.');
+        return;
+      }
       switchSection('calculator');
     });
   }
   const newLoanShortcutBtn = document.getElementById('new-loan-shortcut-btn');
   if (newLoanShortcutBtn) {
     newLoanShortcutBtn.addEventListener('click', () => {
+      const maxLoans = getPlanLimit('max_loans');
+      if (state.loans && state.loans.length >= maxLoans) {
+        alert('Ha alcanzado el límite de préstamos activos de su plan. Comuníquese con ventas para mejorar su plan.');
+        return;
+      }
       switchSection('calculator');
     });
   }
@@ -589,6 +744,7 @@ function renderDashboard() {
   let totalCapital = 0;
   let totalInterests = 0;
   let totalCollected = 0;
+  let totalMora = 0;
   
   let activeCount = 0;
   let paidCount = 0;
@@ -607,6 +763,9 @@ function renderDashboard() {
     else activeCount++;
 
     loan.instalments.forEach(inst => {
+      if (inst.status === 'overdue') {
+        totalMora += (inst.amount - inst.paid);
+      }
       inst.payments.forEach(pay => {
         totalCollected += pay.amount;
         
@@ -628,16 +787,42 @@ function renderDashboard() {
   });
 
   const totalPayable = totalCapital + totalInterests;
-  const totalBalance = totalPayable - totalCollected;
 
   // Actualizar KPIs
   document.getElementById('kpi-capital').textContent = formatCurrency(totalCapital);
   document.getElementById('kpi-interests').textContent = formatCurrency(totalInterests);
   document.getElementById('kpi-collected').textContent = formatCurrency(totalCollected);
-  document.getElementById('kpi-balance').textContent = formatCurrency(totalBalance);
+  document.getElementById('kpi-mora').textContent = formatCurrency(totalMora);
+
+  const moraPercentage = totalCapital > 0 ? (totalMora / totalCapital) * 100 : 0;
+  const moraLabel = document.getElementById('mora-label-text');
+  const moraText = document.getElementById('mora-percentage-text');
+  const moraBar = document.getElementById('mora-progress-bar');
+  
+  if (moraLabel && moraText && moraBar) {
+    moraText.textContent = moraPercentage.toFixed(2) + '%';
+    moraBar.style.width = Math.min(moraPercentage, 100) + '%';
+    if (moraPercentage === 0) {
+      moraLabel.textContent = 'Sin Morosidad';
+      moraLabel.style.color = 'var(--success-color)';
+      moraBar.style.backgroundColor = 'var(--success-color)';
+    } else if (moraPercentage <= 5) {
+      moraLabel.textContent = 'Morosidad Baja (Saludable)';
+      moraLabel.style.color = 'var(--success-color)';
+      moraBar.style.backgroundColor = 'var(--success-color)';
+    } else if (moraPercentage <= 15) {
+      moraLabel.textContent = 'Morosidad Media (Atención)';
+      moraLabel.style.color = 'var(--warning-color)';
+      moraBar.style.backgroundColor = 'var(--warning-color)';
+    } else {
+      moraLabel.textContent = 'Morosidad Alta (Crítico)';
+      moraLabel.style.color = 'var(--danger-color)';
+      moraBar.style.backgroundColor = 'var(--danger-color)';
+    }
+  }
 
   // Renderizar gráficos
-  renderStatusChart(activeCount, paidCount, overdueCount);
+  renderStatusChart(totalCollected, Math.max(0, totalPayable - totalCollected));
   renderCollectionsChart(collectionsByMonth);
   renderRecentPayments();
 }
@@ -728,7 +913,7 @@ function renderRecentPayments() {
 }
 
 // Gráfico: Estado de Préstamos
-function renderStatusChart(active, paid, overdue) {
+function renderStatusChart(collected, pending) {
   const ctx = document.getElementById('statusChart').getContext('2d');
   
   if (statusChartInstance) {
@@ -738,21 +923,19 @@ function renderStatusChart(active, paid, overdue) {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const labelColor = isDark ? '#fafafa' : '#09090b';
 
-  // Si no hay datos, mostrar vacío
-  if (active === 0 && paid === 0 && overdue === 0) {
-    active = 1; // Solo para que dibuje algo neutro
+  if (collected === 0 && pending === 0) {
+    pending = 1;
   }
 
   statusChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: ['Activos', 'Pagados', 'Vencidos'],
+      labels: ['Dinero Recuperado', 'Por Recuperar'],
       datasets: [{
-        data: [active, paid, overdue],
+        data: [collected, pending],
         backgroundColor: [
-          '#2563eb', // Azul
           '#10b981', // Verde
-          '#ef4444'  // Rojo
+          '#f59e0b'  // Naranja/Amarillo
         ],
         borderWidth: isDark ? 2 : 1,
         borderColor: isDark ? '#0d0d11' : '#ffffff'
@@ -884,7 +1067,7 @@ calculatorForm.addEventListener('submit', (e) => {
   
   // Resumen
   const freqName = FREQUENCIES[frequency].name;
-  const typeName = type === 'french' ? 'Francés (Cuota Fija)' : 'Simple (Cuota Lineal)';
+  const typeName = type === 'french' ? 'Francés (Cuota Fija)' : (type === 'german' ? 'Alemán (Capital Fijo)' : 'Simple (Cuota Lineal)');
   calcSummaryText.innerHTML = `Préstamo de <strong>${formatCurrency(amount)}</strong> a <strong>${term} cuotas ${freqName.toLowerCase()}s</strong> (${typeName}) al <strong>${rate}% anual</strong>.`;
   calcTotalPayableBadge.textContent = `Total a Pagar: ${formatCurrency(calculatedLoanTemp.totalPayable)}`;
 
@@ -1143,6 +1326,31 @@ function viewClientDetail(id) {
   
   // Renderizar historial de préstamos del cliente
   const clientLoans = state.loans.filter(l => l.clientId === id);
+
+  // Calcular Perfil de Riesgo
+  let riskLevel = 'Sin Historial';
+  let riskColor = 'var(--text-muted)';
+  if (clientLoans.length > 0) {
+    const hasOverdue = clientLoans.some(l => l.status === 'overdue' || l.instalments.some(inst => inst.status === 'overdue'));
+    const hasPaid = clientLoans.some(l => l.status === 'paid');
+    
+    if (hasOverdue) {
+      riskLevel = 'Alto (Moroso)';
+      riskColor = 'var(--danger)';
+    } else if (hasPaid) {
+      riskLevel = 'Bajo (Excelente)';
+      riskColor = 'var(--success)';
+    } else {
+      riskLevel = 'Medio (Activo)';
+      riskColor = 'var(--warning)';
+    }
+  }
+  const riskEl = document.getElementById('client-detail-risk');
+  if (riskEl) {
+    riskEl.textContent = riskLevel;
+    riskEl.style.color = riskColor;
+  }
+
   const listContainer = document.getElementById('client-detail-loans-list');
   listContainer.innerHTML = '';
   
@@ -1173,6 +1381,30 @@ function viewClientDetail(id) {
   }
   
   openModal('modal-client-detail');
+  
+  // KYC Documents viewer
+  const kycPanel = document.getElementById('client-kyc-docs-panel');
+  const selfieImg = document.getElementById('client-kyc-selfie');
+  const docImg = document.getElementById('client-kyc-document');
+  
+  if (client.kycStatus === 'verified' && (client.selfieUrl || client.idDocumentUrl)) {
+    if (kycPanel) kycPanel.style.display = 'block';
+    if (selfieImg && client.selfieUrl) {
+      selfieImg.src = client.selfieUrl;
+      selfieImg.style.display = 'block';
+    } else if (selfieImg) {
+      selfieImg.style.display = 'none';
+    }
+    if (docImg && client.idDocumentUrl) {
+      docImg.src = client.idDocumentUrl;
+      docImg.style.display = 'block';
+    } else if (docImg) {
+      docImg.style.display = 'none';
+    }
+  } else {
+    if (kycPanel) kycPanel.style.display = 'none';
+  }
+  
   lucide.createIcons();
 }
 
@@ -1246,11 +1478,31 @@ function viewLoanDetail(loanId) {
   document.getElementById('loan-detail-client').textContent = loan.clientName;
   document.getElementById('loan-detail-date').textContent = formatDateReadable(loan.startDate);
   
-  const typeName = loan.type === 'french' ? 'Sistema Francés' : 'Interés Simple';
+  const client = state.clients.find(c => c.id === loan.clientId);
+  const photoContainer = document.getElementById('loan-detail-client-photo-container');
+  if (client && client.kycStatus === 'verified' && client.kycPhoto) {
+    document.getElementById('loan-detail-client-photo').src = client.kycPhoto;
+    document.getElementById('loan-detail-client-name-photo').textContent = client.name;
+    photoContainer.style.display = 'flex';
+  } else {
+    photoContainer.style.display = 'none';
+  }
+  
+  const typeName = loan.type === 'french' ? 'Sistema Francés' : (loan.type === 'german' ? 'Sistema Alemán' : 'Interés Simple');
   document.getElementById('loan-detail-type').textContent = typeName;
   
   const freqName = FREQUENCIES[loan.frequency].name;
   document.getElementById('loan-detail-frequency').textContent = `${freqName} (${loan.term} cuotas)`;
+  
+  // Calcular APR (Tasa Anual Equivalente)
+  let termInYears = loan.term / 12; // default monthly
+  if (loan.frequency === 'weekly') termInYears = loan.term / 52;
+  else if (loan.frequency === 'biweekly') termInYears = loan.term / 24;
+  else if (loan.frequency === 'daily') termInYears = loan.term / 365;
+  
+  const apr = ((loan.interestAmount / loan.amount) / termInYears) * 100;
+  const aprEls = document.querySelectorAll('#loan-detail-apr');
+  aprEls.forEach(el => el.textContent = `${apr.toFixed(2)}%`);
   
   document.getElementById('loan-detail-amount').textContent = formatCurrency(loan.amount);
   document.getElementById('loan-detail-interest-amount').textContent = formatCurrency(loan.interestAmount);
@@ -1300,9 +1552,9 @@ function viewLoanDetail(loanId) {
         <button class="btn btn-primary btn-sm" onclick="printReceipt('${loan.id}', ${inst.index})" title="Imprimir Recibo">
           <i data-lucide="printer" style="width: 12px; height: 12px;"></i>
         </button>
-        <button class="btn btn-success btn-sm" onclick="sendWhatsAppReceipt('${loan.id}', ${inst.index})" title="Enviar por WhatsApp" style="background-color: #25D366; border-color: #25D366;">
+        ${hasFeature('allow_whatsapp') ? `<button class="btn btn-success btn-sm" onclick="sendWhatsAppReceipt('${loan.id}', ${inst.index})" title="Enviar por WhatsApp" style="background-color: #25D366; border-color: #25D366;">
           <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
-        </button>
+        </button>` : ''}
       </div>`;
     }
 
@@ -1318,6 +1570,13 @@ function viewLoanDetail(loanId) {
       <td class="text-right">${actionBtn}</td>
     `;
     tbody.appendChild(tr);
+  });
+  
+  // Mostrar u ocultar botón de contrato según el plan
+  const canUseDocs = hasFeature('allow_documents');
+  ['btn-contract-pdf', 'btn-contract-pdf-2'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = canUseDocs ? '' : 'none';
   });
   
   openModal('modal-loan-detail');
@@ -1436,6 +1695,87 @@ payCuotaForm.addEventListener('submit', async (e) => {
     alert("Error al procesar pago: " + error.message);
   }
 });
+
+function printReceipt(loanId, instIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const inst = loan.instalments.find(i => i.index === instIndex);
+  if (!inst) return;
+  const client = state.clients.find(c => c.id === loan.clientId);
+  
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('La librería PDF no está cargada. Actualiza la página.');
+    return;
+  }
+  
+  const doc = new window.jspdf.jsPDF();
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  
+  doc.setFontSize(22);
+  doc.text(companyName, 105, 20, { align: 'center' });
+  doc.setFontSize(16);
+  doc.text('Recibo de Pago', 105, 30, { align: 'center' });
+  
+  doc.setFontSize(12);
+  doc.text(`Fecha de Impresión: ${formatDateReadable(new Date().toISOString())}`, 20, 50);
+  doc.text(`Cliente: ${client ? client.name : loan.clientName}`, 20, 60);
+  doc.text(`Préstamo ID: ${loan.id.substring(0, 8)}`, 20, 70);
+  
+  doc.text(`Detalle del Pago:`, 20, 90);
+  doc.text(`Cuota Nº: ${inst.index} de ${loan.term}`, 30, 100);
+  doc.text(`Monto Pagado: ${formatCurrency(inst.paid)}`, 30, 110);
+  
+  doc.text(`Saldo Restante del Préstamo: ${formatCurrency(loan.remainingBalance)}`, 20, 130);
+  
+  doc.setFontSize(10);
+  doc.text('¡Gracias por su pago!', 105, 150, { align: 'center' });
+  
+  const filename = `recibo_${loan.id.substring(0,6)}_cuota_${inst.index}.pdf`;
+  
+  if (window.Capacitor && window.Capacitor.isNativePlatform) {
+    if (typeof shareFileApp !== 'undefined') {
+      const base64Data = doc.output('datauristring').split(',')[1];
+      shareFileApp(base64Data, filename, 'Recibo de Pago');
+    } else {
+      alert('Funcionalidad de compartir no disponible.');
+    }
+  } else {
+    doc.save(filename);
+  }
+}
+
+function sendWhatsAppReceipt(loanId, instIndex) {
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  const inst = loan.instalments.find(i => i.index === instIndex);
+  if (!inst) return;
+  const client = state.clients.find(c => c.id === loan.clientId);
+  if (!client) return;
+
+  if (!client.phone) {
+    alert('El cliente no tiene un número de teléfono registrado.');
+    return;
+  }
+
+  const companyName = window.appSettings.companyName || 'PréstamosApp';
+  let phone = client.phone.replace(/\D/g, '');
+  
+  const text = `Hola ${client.name},
+  
+Confirmamos la recepción de tu pago:
+*Cuota:* ${instIndex} de ${loan.term}
+*Monto pagado:* ${formatCurrency(inst.paid)}
+*Fecha:* ${formatDateReadable(new Date().toISOString())}
+
+*Saldo restante del préstamo:* ${formatCurrency(loan.remainingBalance)}
+
+¡Gracias por tu pago!
+_${companyName}_`;
+
+  const encodedText = encodeURIComponent(text);
+  const waUrl = `https://wa.me/${phone}?text=${encodedText}`;
+  window.open(waUrl, '_blank');
+}
 
 // --- 6. FUNCIONALIDADES DE AJUSTES Y CONFIGURACIÓN ---
 
@@ -1611,37 +1951,92 @@ if (kycRetakeBtn) {
   });
 }
 
+let faceApiLoaded = false;
+async function loadFaceApi() {
+  if (faceApiLoaded) return true;
+  try {
+    await faceapi.nets.tinyFaceDetector.loadFromUri('models');
+    await faceapi.nets.faceLandmark68Net.loadFromUri('models');
+    await faceapi.nets.faceRecognitionNet.loadFromUri('models');
+    faceApiLoaded = true;
+    return true;
+  } catch (err) {
+    console.error("Error loading faceapi models:", err);
+    return false;
+  }
+}
+
 if (kycSubmitBtn) {
   kycSubmitBtn.addEventListener('click', async () => {
     const clientId = document.getElementById('kyc-client-id').value;
     const client = state.clients.find(c => c.id === clientId);
     if (!client) return;
+
+    const fileInput = document.getElementById('kyc-document-file');
+    const docFile = fileInput.files[0];
     
-    // Guardar KYC en el backend
+    if (!docFile) {
+      alert("Debes adjuntar un documento de identidad para realizar la validación biométrica.");
+      return;
+    }
+
+    const originalText = kycSubmitBtn.innerHTML;
+    kycSubmitBtn.innerHTML = 'Analizando rostro...';
+    kycSubmitBtn.disabled = true;
+
     try {
+      const loaded = await loadFaceApi();
+      if (!loaded) throw new Error("No se pudo cargar el motor de IA. Revisa tu conexión o los archivos del modelo.");
+
+      const docImg = await faceapi.bufferToImage(docFile);
+
+      // Detect face in selfie
+      const selfieDetection = await faceapi.detectSingleFace(kycSnapshot, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+      if (!selfieDetection) throw new Error("No se detectó ningún rostro en la foto tomada (selfie).");
+
+      // Detect face in document
+      const docDetection = await faceapi.detectSingleFace(docImg, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+      if (!docDetection) throw new Error("No se detectó ningún rostro en el documento de identidad.");
+
+      const distance = faceapi.euclideanDistance(selfieDetection.descriptor, docDetection.descriptor);
+      const threshold = 0.55; 
+      if (distance > threshold) {
+        throw new Error(`Validación fallida: Los rostros no coinciden (Diferencia: ${distance.toFixed(2)}). Intenta tomar una foto más clara.`);
+      }
+
+      // Extraer Base64 del documento para guardar
+      const docCanvas = document.createElement('canvas');
+      docCanvas.width = docImg.width;
+      docCanvas.height = docImg.height;
+      const ctx = docCanvas.getContext('2d');
+      ctx.drawImage(docImg, 0, 0);
+      const docBase64 = docCanvas.toDataURL('image/jpeg', 0.8);
+
       const res = await fetch(`${API_URL}/clients/${clientId}/kyc`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-auth-token': localStorage.getItem('prestamos_auth_token')
         },
-        body: JSON.stringify({ selfieUrl: kycSnapshot.src, idDocumentUrl: '' })
+        body: JSON.stringify({ selfieUrl: kycSnapshot.src, idDocumentUrl: docBase64 })
       });
       if (!res.ok) throw new Error('Error al validar la identidad en el servidor.');
       
       client.kycStatus = 'verified';
       client.kycPhoto = kycSnapshot.src;
+      
+      stopCamera();
+      closeModal('modal-kyc');
+      renderClientsTable();
+      viewClientDetail(clientId);
+      alert('¡Verificación KYC Biométrica exitosa!');
     } catch (e) {
       console.error(e);
       alert(e.message);
-      return;
+    } finally {
+      kycSubmitBtn.innerHTML = originalText;
+      kycSubmitBtn.disabled = false;
     }
-    
-    stopCamera();
-    closeModal('modal-kyc');
-    renderClientsTable();
-    viewClientDetail(clientId);
-    alert('Verificación KYC guardada correctamente.');
   });
 }
 
@@ -1936,13 +2331,11 @@ if (deleteAuthForm) {
       if (targetType === 'loan') {
         await apiRequest(`/loans/${targetId}`, { method: 'DELETE', body: JSON.stringify({ password }) });
         closeModal('modal-loan-detail');
-        await renderLoans();
+        await loadData();
       } else if (targetType === 'client') {
         await apiRequest(`/clients/${targetId}`, { method: 'DELETE', body: JSON.stringify({ password }) });
         closeModal('modal-client-detail');
-        await renderClients(); // recargar la tabla de clientes
-        // Also refresh loans just in case they were looking at loans of this client
-        await renderLoans();
+        await loadData(); // Reloads all clients and loans to update tables
       }
 
       closeModal('modal-delete-auth');
@@ -2115,32 +2508,6 @@ if (document.getElementById('download-backup-btn')) document.getElementById('dow
   }
 });
 
-// Exportación CSV
-function downloadCSV(csvContent, fileName) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", fileName);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-if (document.getElementById('export-clients-btn')) document.getElementById('export-clients-btn').addEventListener('click', () => {
-  if (state.clients.length === 0) return alert('No hay clientes para exportar');
-  const headers = "ID,Nombre,Telefono,Email,Notas,FechaCreacion\n";
-  const rows = state.clients.map(c => `"${c.id}","${c.name}","${c.phone}","${c.email}","${(c.notes || '').replace(/"/g, '""')}","${c.createdAt}"`).join("\n");
-  downloadCSV(headers + rows, 'clientes.csv');
-});
-
-if (document.getElementById('export-loans-btn')) document.getElementById('export-loans-btn').addEventListener('click', () => {
-  if (state.loans.length === 0) return alert('No hay préstamos para exportar');
-  const headers = "ID,Cliente,Monto,Tasa,Cuotas,Frecuencia,Estado,BalancePendiente,FechaCreacion\n";
-  const rows = state.loans.map(l => `"${l.id}","${l.clientName}","${l.amount}","${l.annualRate}","${l.term}","${l.frequency}","${l.status}","${l.remainingBalance}","${l.createdAt}"`).join("\n");
-  downloadCSV(headers + rows, 'prestamos.csv');
-});
-
 // --- 8. INICIALIZACIÓN ---
 document.addEventListener('DOMContentLoaded', () => {
   // Cargar tema
@@ -2159,6 +2526,35 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Inicializar Lucide Icons
   lucide.createIcons();
+
+  // Bloqueo Biométrico
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NativeBiometric && localStorage.getItem('prestamos_auth_token')) {
+    const lockScreen = document.createElement('div');
+    lockScreen.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--bg);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);z-index:9999;display:flex;align-items:center;justify-content:center;color:var(--text);font-size:1.5rem;transition:opacity 0.3s ease;";
+    lockScreen.innerHTML = '<div style="text-align:center"><i data-lucide="fingerprint" style="width:56px;height:56px;margin-bottom:1rem;color:var(--primary)"></i><br><b style="font-size:1.2rem">App Protegida</b><p style="font-size:0.9rem;color:var(--text-muted);margin-top:0.5rem">Verifica tu identidad para acceder</p></div>';
+    document.body.appendChild(lockScreen);
+    if(typeof lucide !== 'undefined') lucide.createIcons();
+
+    window.Capacitor.Plugins.NativeBiometric.isAvailable().then(result => {
+      if (result.isAvailable) {
+        const tryUnlock = () => {
+          window.Capacitor.Plugins.NativeBiometric.verifyIdentity({
+            reason: "Acceso a PrestamosApp",
+            title: "Desbloquear App"
+          }).then(() => {
+            lockScreen.style.opacity = '0';
+            setTimeout(() => lockScreen.remove(), 300);
+          }).catch(() => {
+            lockScreen.innerHTML = '<div style="text-align:center"><i data-lucide="shield-alert" style="width:56px;height:56px;margin-bottom:1rem;color:var(--danger)"></i><br><b style="font-size:1.2rem">Autenticación Fallida</b><div style="margin-top:1.5rem; display:flex; flex-direction:column; gap:0.75rem;"><button class="btn btn-primary" onclick="window.location.reload()">Reintentar Biometría</button><button class="btn btn-secondary" onclick="localStorage.removeItem(\'prestamos_auth_token\'); localStorage.removeItem(\'prestamos_is_superadmin\'); document.getElementById(\'biometric-lock\').remove(); showLogin();">Usar Contraseña</button></div></div>';
+            if(typeof lucide !== 'undefined') lucide.createIcons();
+          });
+        };
+        tryUnlock();
+      } else {
+        lockScreen.remove();
+      }
+    }).catch(() => lockScreen.remove());
+  }
 });
 
 // Manejo de estado de red (Online / Offline)
@@ -2278,16 +2674,145 @@ function sendWhatsAppReceipt(loanId, cuotaIndex) {
   window.open(waUrl, '_blank');
 }
 
+async function shareFileApp(base64Data, filename, title) {
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+    try {
+      const { Filesystem, Share } = window.Capacitor.Plugins;
+      const result = await Filesystem.writeFile({
+        path: filename,
+        data: base64Data,
+        directory: 'DOCUMENTS',
+        recursive: true
+      });
+      if (Share) {
+        await Share.share({ title: title, url: result.uri, dialogTitle: 'Guardar o compartir archivo' });
+      } else {
+        alert('Archivo guardado en Documentos: ' + filename);
+      }
+    } catch (e) {
+      alert('Error guardando archivo en el dispositivo: ' + e.message);
+    }
+    return true;
+  }
+  return false;
+}
+
 function downloadCSV(csvContent, filename) {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (window.Capacitor && window.Capacitor.isNativePlatform) {
+    const base64Data = btoa(unescape(encodeURIComponent(csvContent)));
+    shareFileApp(base64Data, filename, 'Exportación CSV');
+  } else {
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}
+
+// =========================================================
+// IMPORTAR CLIENTES DESDE CSV
+// =========================================================
+let parsedClientsToImport = [];
+
+function openImportClientsModal() {
+  document.getElementById('import-clients-file').value = '';
+  document.getElementById('import-clients-preview').style.display = 'none';
+  document.getElementById('btn-process-import-clients').disabled = true;
+  parsedClientsToImport = [];
+  openModal('modal-import-clients');
+}
+
+// Escuchar el cambio en el input de archivo para hacer el preview
+document.getElementById('import-clients-file')?.addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) {
+    document.getElementById('import-clients-preview').style.display = 'none';
+    document.getElementById('btn-process-import-clients').disabled = true;
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const text = evt.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length < 2) {
+      alert("El archivo no tiene filas suficientes (requiere al menos cabecera y un dato).");
+      return;
+    }
+    
+    // Parseo simple de CSV (asumiendo coma como separador y sin comas dentro de los campos por simplicidad)
+    const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+    const nameIdx = headers.indexOf('name');
+    const phoneIdx = headers.indexOf('phone');
+    const emailIdx = headers.indexOf('email');
+    const notesIdx = headers.indexOf('notes');
+    
+    if (nameIdx === -1) {
+      alert("El archivo CSV debe contener una columna llamada 'name'.");
+      return;
+    }
+    
+    parsedClientsToImport = [];
+    for (let i = 1; i < lines.length; i++) {
+      // RegEx básico para manejar comas dentro de comillas si las hay
+      const row = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
+      const getVal = (idx) => (idx !== -1 && row[idx]) ? row[idx].replace(/^"|"$/g, '').trim() : '';
+      
+      const client = {
+        name: getVal(nameIdx),
+        phone: getVal(phoneIdx),
+        email: getVal(emailIdx),
+        notes: getVal(notesIdx)
+      };
+      
+      if (client.name) {
+        parsedClientsToImport.push(client);
+      }
+    }
+    
+    const preview = document.getElementById('import-clients-preview');
+    if (parsedClientsToImport.length > 0) {
+      preview.innerHTML = `<strong>¡Listo para importar!</strong><br>Se han detectado ${parsedClientsToImport.length} clientes válidos en el archivo.`;
+      preview.style.display = 'block';
+      preview.style.background = 'rgba(var(--success-rgb), 0.1)';
+      preview.style.border = '1px solid var(--success)';
+      preview.style.color = 'var(--text)';
+      document.getElementById('btn-process-import-clients').disabled = false;
+    } else {
+      preview.innerHTML = `No se detectaron clientes válidos. Revisa el formato.`;
+      preview.style.display = 'block';
+      preview.style.background = 'rgba(var(--danger-rgb), 0.1)';
+      preview.style.border = '1px solid var(--danger)';
+      document.getElementById('btn-process-import-clients').disabled = true;
+    }
+  };
+  reader.readAsText(file);
+});
+
+async function submitImportClients() {
+  if (parsedClientsToImport.length === 0) return;
+  
+  const btn = document.getElementById('btn-process-import-clients');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = 'Importando...';
+  btn.disabled = true;
+  
+  try {
+    const res = await apiRequest('/clients/bulk', 'POST', { clients: parsedClientsToImport });
+    alert(res.message);
+    closeModal('modal-import-clients');
+    loadClients(); // Recargar la tabla principal
+  } catch (err) {
+    alert('Error al importar: ' + err.message);
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
 }
 
 function exportClientsCSV() {
@@ -2316,6 +2841,44 @@ function exportLoansCSV() {
   });
   
   downloadCSV(csvContent, `prestamos_${new Date().toISOString().split('T')[0]}.csv`);
+}
+
+function exportClientsPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) return alert('La librería PDF no se cargó correctamente.');
+  const doc = new window.jspdf.jsPDF();
+  const headers = [['ID', 'Nombre', 'Teléfono', 'Correo', 'Notas', 'Fecha Registro']];
+  const rows = state.clients.map(c => [
+    c.id, c.name, c.phone || '', c.email || '', c.notes || '', c.createdAt
+  ]);
+  doc.text('Lista de Clientes', 14, 15);
+  doc.autoTable({ startY: 20, head: headers, body: rows });
+  
+  const filename = `clientes_${new Date().toISOString().split('T')[0]}.pdf`;
+  if (window.Capacitor && window.Capacitor.isNativePlatform) {
+    const base64Data = doc.output('datauristring').split(',')[1];
+    shareFileApp(base64Data, filename, 'Exportación PDF Clientes');
+  } else {
+    doc.save(filename);
+  }
+}
+
+function exportLoansPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) return alert('La librería PDF no se cargó correctamente.');
+  const doc = new window.jspdf.jsPDF();
+  const headers = [['ID', 'Cliente', 'Monto', 'Tasa', 'Frecuencia', 'Total a Pagar', 'Deuda', 'Estado', 'Fecha']];
+  const rows = state.loans.map(l => [
+    l.id, l.clientName, l.amount, l.rate + '%', (FREQUENCIES[l.frequency] ? FREQUENCIES[l.frequency].name : null) || l.frequency, l.totalPayable, l.remainingBalance, l.status, l.startDate
+  ]);
+  doc.text('Lista de Préstamos', 14, 15);
+  doc.autoTable({ startY: 20, head: headers, body: rows, styles: { fontSize: 8 } });
+  
+  const filename = `prestamos_${new Date().toISOString().split('T')[0]}.pdf`;
+  if (window.Capacitor && window.Capacitor.isNativePlatform) {
+    const base64Data = doc.output('datauristring').split(',')[1];
+    shareFileApp(base64Data, filename, 'Exportación PDF Préstamos');
+  } else {
+    doc.save(filename);
+  }
 }
 
 // --- LOGICA DE PLANES ---
@@ -2470,14 +3033,22 @@ async function renderSuperAdminSection() {
     companies.forEach(comp => {
       const isDefault = comp.id === 'comp_default';
       const tr = document.createElement('tr');
+      const isActive = comp.status === 'active';
+
+      // Check if subscription is expired
+      const today = new Date().toISOString().split('T')[0];
+      const isExpired = comp.validUntil && comp.validUntil < today;
       
       let planOptions = plans.map(p => `<option value="${p.id}" ${comp.plan === p.id ? 'selected' : ''}>${p.name}</option>`).join('');
       
       tr.innerHTML = `
-        <td><strong>${comp.name}</strong><br><small class="text-muted">ID: ${comp.id}</small></td>
         <td>
-          <span class="badge ${comp.status === 'active' ? 'badge-success' : 'badge-danger'}">
-            ${comp.status === 'active' ? 'Activo' : 'Suspendido'}
+          <strong>${comp.name}</strong>
+          <br><small style="color:var(--text-muted);font-size:0.75rem">ID: ${comp.id}</small>
+        </td>
+        <td>
+          <span class="badge ${isActive && !isExpired ? 'badge-success' : 'badge-danger'}" style="font-size:0.78rem">
+            ${isActive && !isExpired ? '✅ Activo' : isExpired ? '⏰ Vencido' : '🔴 Suspendido'}
           </span>
         </td>
         <td>
@@ -2485,21 +3056,31 @@ async function renderSuperAdminSection() {
             ${planOptions}
           </select>
         </td>
-        <td>${comp.validUntil || '-'}</td>
+        <td style="font-size:0.88rem;${isExpired ? 'color:var(--danger)' : ''}">${comp.validUntil || '-'}</td>
         <td>
-          <div style="display:flex; gap:0.5rem; flex-direction:column; font-size:0.85rem;">
-            <span><i data-lucide="users" style="width:14px; height:14px"></i> Clientes: ${comp.clientCount}</span>
-            <span><i data-lucide="hand-coins" style="width:14px; height:14px"></i> Préstamos: ${comp.loanCount}</span>
+          <div style="display:flex; gap:0.3rem; flex-direction:column; font-size:0.82rem;">
+            <span>👥 ${comp.clientCount} clientes</span>
+            <span>💰 ${comp.loanCount} préstamos</span>
           </div>
         </td>
-        <td class="text-end" style="white-space: nowrap;">
-          ${!isDefault ? `<button class="btn btn-sm btn-primary" onclick="generateActivationLink('${comp.id}', '${comp.plan}')" title="Generar Link de Activación">
-            <i data-lucide="link" style="width:14px;height:14px"></i> Activar Plan
-          </button>` : ''}
-          <button class="btn btn-sm btn-secondary" onclick="toggleCompanyStatus('${comp.id}', '${comp.status}')" ${isDefault ? 'disabled' : ''}>
-            ${comp.status === 'active' ? 'Suspender' : 'Activar'}
-          </button>
-          ${!isDefault ? `<button class="btn btn-sm btn-danger" onclick="deleteCompany('${comp.id}')"><i data-lucide="trash-2"></i></button>` : ''}
+        <td style="white-space:nowrap;">
+          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+            ${!isDefault ? `
+            <button class="btn btn-sm" style="background:var(--primary);color:#fff;font-size:0.78rem;padding:0.3rem 0.6rem;"
+              onclick="showActivatePlanModal('${comp.id}', '${comp.plan}')" title="Activar / Renovar Plan">
+              🔗 Activar Plan
+            </button>` : ''}
+            <button class="btn btn-sm" style="background:${isActive ? '#f59e0b' : '#22c55e'};color:#fff;font-size:0.78rem;padding:0.3rem 0.6rem;"
+              onclick="showToggleStatusModal('${comp.id}', '${comp.status}', '${comp.name}')" ${isDefault ? 'disabled' : ''}
+              title="${isActive ? 'Suspender' : 'Activar'} empresa">
+              ${isActive ? '⏸ Suspender' : '▶ Activar'}
+            </button>
+            ${!isDefault ? `
+            <button class="btn btn-sm" style="background:#ef4444;color:#fff;font-size:0.78rem;padding:0.3rem 0.5rem;"
+              onclick="showDeleteCompanyModal('${comp.id}', '${comp.name}')" title="Eliminar empresa">
+              🗑️
+            </button>` : ''}
+          </div>
         </td>
       `;
       tbody.appendChild(tr);
@@ -2509,12 +3090,26 @@ async function renderSuperAdminSection() {
     const ptbody = document.getElementById('saas-plans-tbody');
     ptbody.innerHTML = '';
     plans.forEach(plan => {
+      const feats = [];
+      if(plan.allow_documents) feats.push('Docs');
+      if(plan.allow_guarantees) feats.push('Garantías');
+      if(plan.allow_expenses) feats.push('Gastos');
+      if(plan.allow_banks) feats.push('Bancos');
+      if(plan.allow_cash) feats.push('Caja');
+      if(plan.allow_denominations) feats.push('Cuadre');
+      if(plan.allow_finances) feats.push('Finanzas');
+      if(plan.allow_whatsapp) feats.push('WA');
+      if(plan.allow_debugger) feats.push('Depurador');
+      
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><strong>${plan.name}</strong></td>
         <td>$${plan.price}</td>
         <td>${plan.max_loans}</td>
         <td>${plan.max_users}</td>
+        <td style="font-size:0.75rem; color:var(--text-muted); max-width:150px;">
+          ${feats.length > 0 ? feats.join(', ') : 'Ninguno'}
+        </td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-primary" onclick='openPlanModal(${JSON.stringify(plan)})'><i data-lucide="edit"></i></button>
           <button class="btn btn-sm btn-outline-danger" onclick="deletePlan('${plan.id}')"><i data-lucide="trash-2"></i></button>
@@ -2529,242 +3124,217 @@ async function renderSuperAdminSection() {
   }
 }
 
+// ═══════════════════════════════════════════════════
+// HELPER: Modal de acción genérico para administración
+// ═══════════════════════════════════════════════════
+function showAdminModal(html, onClose) {
+  const id = 'sa-modal-' + Date.now();
+  const overlay = document.createElement('div');
+  overlay.id = id;
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.65);padding:1rem;animation:fadeIn .15s ease';
+  overlay.innerHTML = `<div style="background:var(--bg-card,#1e293b);border:1px solid var(--border,#334155);border-radius:1rem;padding:2rem;max-width:460px;width:100%;box-shadow:0 24px 48px rgba(0,0,0,0.5);">${html}</div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); if (onClose) onClose(); } });
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function closeAdminModal() {
+  document.querySelectorAll('[id^="sa-modal-"]').forEach(el => el.remove());
+}
+function saToast(msg, ok = true) {
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:10000;background:${ok?'#22c55e':'#ef4444'};color:#fff;padding:.75rem 1.25rem;border-radius:.75rem;font-weight:600;font-size:.9rem;box-shadow:0 4px 16px rgba(0,0,0,.35);animation:slideUp .2s ease`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ─── Cambiar plan desde el select ───
 window.changeCompanyPlan = async function(companyId, newPlan) {
-  if (!confirm('¿Cambiar el plan de esta empresa?')) return;
   try {
-    await apiRequest(`/saas/companies/${companyId}/plan`, {
-      method: 'PUT',
-      body: JSON.stringify({ plan: newPlan })
+    await apiRequest('/saas/companies/' + companyId + '/plan', {
+      method: 'PUT', body: JSON.stringify({ plan: newPlan })
     });
+    saToast('✅ Plan actualizado correctamente');
     renderSuperAdminSection();
   } catch (err) {
-    alert('Error: ' + err.message);
+    saToast('❌ Error: ' + err.message, false);
   }
 };
 
-window.toggleCompanyStatus = async function(companyId, currentStatus) {
-  const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-
-  if (newStatus === 'suspended') {
-    if (!confirm('¿Desea SUSPENDER esta empresa? No podrá usar la app hasta reactivarla.')) return;
-    try {
-      await apiRequest(`/saas/companies/${companyId}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: 'suspended' })
-      });
-      renderSuperAdminSection();
-    } catch (err) {
-      alert('Error: ' + err.message);
-    }
-    return;
-  }
-
-  // Activar: preguntar cuántos meses agregar
-  const input = prompt('¿Por cuántos meses deseas activar/renovar esta empresa?', '1');
-  if (input === null) return; // canceló
-  const months = parseInt(input, 10);
-  if (isNaN(months) || months < 1) {
-    alert('Ingresa un número de meses válido (mínimo 1).');
-    return;
-  }
-  try {
-    const res = await apiRequest(`/saas/companies/${companyId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status: 'active', months })
-    });
-    alert(`Empresa activada. Válida hasta: ${res.newValidUntil}`);
-    renderSuperAdminSection();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-};
-
-window.deleteCompany = async function(companyId) {
-  if (!confirm('¿Eliminar esta empresa permanentemente? Esta acción no se puede deshacer.')) return;
-  try {
-    await apiRequest(`/saas/companies/${companyId}`, { method: 'DELETE' });
-    renderSuperAdminSection();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-};
-
-// Modal Planes SaaS
-window.openPlanModal = function(plan = null) {
-  const modal = document.getElementById('plan-modal');
-  const title = document.getElementById('plan-modal-title');
-  const form = document.getElementById('plan-form');
-  const idInput = document.getElementById('plan-id-input');
-  
-  form.reset();
-  
-  if (plan) {
-    title.textContent = 'Editar Plan SaaS';
-    document.getElementById('plan-id').value = plan.id;
-    idInput.value = plan.id;
-    idInput.disabled = true;
-    document.getElementById('plan-name').value = plan.name;
-    document.getElementById('plan-price').value = plan.price;
-    document.getElementById('plan-max-loans').value = plan.max_loans;
-    document.getElementById('plan-max-users').value = plan.max_users;
+// ─── MODAL: Suspender empresa ───
+window.showToggleStatusModal = function(companyId, currentStatus, companyName) {
+  if (currentStatus === 'active') {
+    // Suspender
+    showAdminModal(`
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:2.5rem;margin-bottom:.75rem">⏸️</div>
+        <h3 style="margin:0 0 .5rem;font-size:1.15rem">Suspender Empresa</h3>
+        <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:.9rem">¿Deseas suspender a <strong style="color:var(--text,#f1f5f9)">${companyName}</strong>?<br>No podrán ingresar al sistema.</p>
+      </div>
+      <div style="display:flex;gap:.75rem">
+        <button onclick="closeAdminModal()" style="flex:1;padding:.65rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:transparent;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600">Cancelar</button>
+        <button id="sa-confirm-btn" onclick="execSuspend('${companyId}')" style="flex:1;padding:.65rem;border-radius:.6rem;border:none;background:#f59e0b;color:#fff;cursor:pointer;font-weight:700">⏸ Suspender</button>
+      </div>
+    `);
   } else {
-    title.textContent = 'Crear Plan SaaS';
-    document.getElementById('plan-id').value = '';
-    idInput.disabled = false;
+    // Activar (con meses)
+    showAdminModal(`
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:2.5rem;margin-bottom:.75rem">▶️</div>
+        <h3 style="margin:0 0 .5rem;font-size:1.15rem">Activar / Renovar Acceso</h3>
+        <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:.9rem">Empresa: <strong style="color:var(--text,#f1f5f9)">${companyName}</strong></p>
+      </div>
+      <div style="margin-bottom:1.25rem">
+        <label style="display:block;font-size:.85rem;color:var(--text-muted,#94a3b8);margin-bottom:.4rem;font-weight:600">¿Por cuántos meses?</label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">
+          ${[1,2,3,6,12].map(m => `<button onclick="document.getElementById('sa-months').value=${m};document.querySelectorAll('.months-quick').forEach(b=>b.style.background='var(--bg,#0f172a)');this.style.background='var(--primary,#3b82f6)'" class="months-quick" style="padding:.4rem .8rem;border-radius:.5rem;border:1px solid var(--border,#334155);background:var(--bg,#0f172a);color:var(--text,#f1f5f9);cursor:pointer;font-weight:600;font-size:.85rem">${m} mes${m>1?'es':''}</button>`).join('')}
+        </div>
+        <input type="number" id="sa-months" value="1" min="1" max="60" style="width:100%;padding:.55rem .75rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:var(--bg,#0f172a);color:var(--text,#f1f5f9);font-size:.95rem">
+      </div>
+      <div style="display:flex;gap:.75rem">
+        <button onclick="closeAdminModal()" style="flex:1;padding:.65rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:transparent;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600">Cancelar</button>
+        <button onclick="execActivate('${companyId}')" style="flex:1;padding:.65rem;border-radius:.6rem;border:none;background:#22c55e;color:#fff;cursor:pointer;font-weight:700">▶ Activar</button>
+      </div>
+    `);
   }
-  
-  modal.style.display = 'flex';
 };
 
-window.closePlanModal = function() {
-  document.getElementById('plan-modal').style.display = 'none';
-};
-
-document.getElementById('plan-form')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const originalId = document.getElementById('plan-id').value;
-  const id = document.getElementById('plan-id-input').value;
-  const name = document.getElementById('plan-name').value;
-  const price = document.getElementById('plan-price').value;
-  const max_loans = document.getElementById('plan-max-loans').value;
-  const max_users = document.getElementById('plan-max-users').value;
-  
+window.execSuspend = async function(companyId) {
   try {
-    if (originalId) {
-      await apiRequest(`/saas/plans/${originalId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ name, price, max_loans, max_users })
-      });
-    } else {
-      await apiRequest('/saas/plans', {
-        method: 'POST',
-        body: JSON.stringify({ id, name, price, max_loans, max_users })
-      });
-    }
-    closePlanModal();
+    await apiRequest('/saas/companies/' + companyId + '/status', {
+      method: 'PUT', body: JSON.stringify({ status: 'suspended' })
+    });
+    closeAdminModal();
+    saToast('⏸ Empresa suspendida');
     renderSuperAdminSection();
   } catch (err) {
-    alert('Error guardando el plan: ' + err.message);
-  }
-});
-
-window.deletePlan = async function(planId) {
-  if (!confirm('¿Seguro que desea eliminar este plan? Los inquilinos con este plan podrían fallar si no se reasignan.')) return;
-  try {
-    await apiRequest(`/saas/plans/${planId}`, { method: 'DELETE' });
-    renderSuperAdminSection();
-  } catch (err) {
-    alert('Error eliminando plan: ' + err.message);
+    saToast('❌ Error: ' + err.message, false);
   }
 };
 
-// --- Generar Link de Activación de Plan ---
-window.generateActivationLink = async function(companyId, currentPlan) {
+window.execActivate = async function(companyId) {
+  const months = parseInt(document.getElementById('sa-months')?.value) || 1;
+  if (months < 1) { saToast('❌ Ingresa al menos 1 mes', false); return; }
+  try {
+    const res = await apiRequest('/saas/companies/' + companyId + '/status', {
+      method: 'PUT', body: JSON.stringify({ status: 'active', months })
+    });
+    closeAdminModal();
+    saToast('✅ Activado hasta: ' + (res.newValidUntil || ''));
+    renderSuperAdminSection();
+  } catch (err) {
+    saToast('❌ Error: ' + err.message, false);
+  }
+};
+
+// ─── MODAL: Eliminar empresa ───
+window.showDeleteCompanyModal = function(companyId, companyName) {
+  showAdminModal(`
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div style="font-size:2.5rem;margin-bottom:.75rem">🗑️</div>
+      <h3 style="margin:0 0 .5rem;font-size:1.15rem;color:#ef4444">Eliminar Empresa</h3>
+      <p style="color:var(--text-muted,#94a3b8);margin:0 0 1rem;font-size:.9rem">Esta acción <strong style="color:#ef4444">no se puede deshacer</strong>.<br>Se eliminarán todos los clientes, préstamos y datos de:<br><strong style="color:var(--text,#f1f5f9)">${companyName}</strong></p>
+      <p style="font-size:.85rem;color:var(--text-muted,#94a3b8);margin:0">Escribe el nombre de la empresa para confirmar:</p>
+      <input type="text" id="sa-confirm-name" placeholder="${companyName}" style="width:100%;margin-top:.5rem;padding:.55rem .75rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:var(--bg,#0f172a);color:var(--text,#f1f5f9);font-size:.9rem;text-align:center">
+    </div>
+    <div style="display:flex;gap:.75rem">
+      <button onclick="closeAdminModal()" style="flex:1;padding:.65rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:transparent;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600">Cancelar</button>
+      <button onclick="execDeleteCompany('${companyId}', '${companyName}')" style="flex:1;padding:.65rem;border-radius:.6rem;border:none;background:#ef4444;color:#fff;cursor:pointer;font-weight:700">🗑️ Eliminar todo</button>
+    </div>
+  `);
+};
+
+window.execDeleteCompany = async function(companyId, expectedName) {
+  const typed = document.getElementById('sa-confirm-name')?.value?.trim();
+  if (typed !== expectedName) {
+    saToast('❌ El nombre no coincide. Operación cancelada.', false);
+    return;
+  }
+  try {
+    await apiRequest('/saas/companies/' + companyId, { method: 'DELETE' });
+    closeAdminModal();
+    saToast('🗑️ Empresa eliminada correctamente');
+    renderSuperAdminSection();
+  } catch (err) {
+    saToast('❌ Error: ' + err.message, false);
+  }
+};
+
+// ─── MODAL: Generar link de activación de plan ───
+window.showActivatePlanModal = async function(companyId, currentPlan) {
   try {
     const plans = await apiRequest('/saas/public-plans');
-    
-    // Crear modal de selección de plan
-    const planOptions = plans.map(p => 
-      `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>${p.name} - RD$ ${Number(p.price).toLocaleString('es-DO')}/mes</option>`
+    const planOptions = plans.map(p =>
+      `<option value="${p.id}" ${p.id === currentPlan ? 'selected' : ''}>` +
+      `${p.name} — RD$${Number(p.price).toLocaleString('es-DO')}/mes</option>`
     ).join('');
-    
-    const selectedPlan = prompt(
-      'Selecciona el plan a activar (escribe el ID del plan):\n\n' +
-      plans.map(p => `• ${p.id} → ${p.name} (RD$ ${Number(p.price).toLocaleString('es-DO')}/mes)`).join('\n') +
-      '\n\nEscribe el ID del plan:',
-      currentPlan
-    );
-    
-    if (!selectedPlan) return;
-    
-    const res = await apiRequest(`/saas/companies/${companyId}/generate-activation`, {
-      method: 'POST',
-      body: JSON.stringify({ planId: selectedPlan })
-    });
-    
-    // Copiar al portapapeles
-    try {
-      await navigator.clipboard.writeText(res.link);
-    } catch(e) { /* clipboard may fail on some devices */ }
-    
-    // Mostrar modal con el link
-    const modalHtml = `
-      <div id="activation-link-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
-        <div style="background:var(--card-bg,#1e293b);border:1px solid var(--border,#334155);border-radius:1rem;padding:2rem;max-width:520px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
-          <div style="text-align:center;margin-bottom:1.5rem;">
-            <div style="width:60px;height:60px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;">🔗</div>
-            <h3 style="margin:0 0 0.5rem;font-size:1.25rem;">Link de Activación Generado</h3>
-            <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:0.9rem;">Plan: <strong>${res.plan}</strong> · Expira en ${res.expiresIn}</p>
-          </div>
-          <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(99,102,241,0.3);border-radius:0.5rem;padding:0.75rem;word-break:break-all;font-family:monospace;font-size:0.8rem;color:#a5b4fc;margin-bottom:1.5rem;">
-            ${res.link}
-          </div>
-          <div style="display:flex;gap:0.75rem;">
-            <button onclick="navigator.clipboard.writeText('${res.link}');this.textContent='¡Copiado!';setTimeout(()=>this.textContent='Copiar Link',2000)" class="btn btn-primary" style="flex:1;padding:0.75rem;">
-              Copiar Link
-            </button>
-            <button onclick="window.open('https://wa.me/?text='+encodeURIComponent('Activa tu plan aquí: ${res.link}'),'_blank')" class="btn btn-success" style="flex:1;padding:0.75rem;background:linear-gradient(135deg,#22c55e,#16a34a);">
-              Enviar por WhatsApp
-            </button>
-          </div>
-          <button onclick="document.getElementById('activation-link-modal').remove()" style="display:block;width:100%;margin-top:0.75rem;padding:0.5rem;background:transparent;border:1px solid var(--border,#334155);border-radius:0.5rem;color:var(--text-muted,#94a3b8);cursor:pointer;">
-            Cerrar
-          </button>
-        </div>
+
+    showAdminModal(`
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:2.5rem;margin-bottom:.75rem">🔗</div>
+        <h3 style="margin:0 0 .5rem;font-size:1.15rem">Generar Link de Activación</h3>
+        <p style="color:var(--text-muted,#94a3b8);margin:0;font-size:.88rem">Selecciona el plan y genera un link para que el cliente lo active.</p>
       </div>
-    `;
-    
-    // Remove existing modal if any
-    const existing = document.getElementById('activation-link-modal');
-    if (existing) existing.remove();
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
+      <div style="margin-bottom:1.25rem">
+        <label style="display:block;font-size:.85rem;color:var(--text-muted,#94a3b8);margin-bottom:.4rem;font-weight:600">Plan a asignar:</label>
+        <select id="sa-plan-select" style="width:100%;padding:.6rem .75rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:var(--bg,#0f172a);color:var(--text,#f1f5f9);font-size:.9rem">
+          ${planOptions}
+        </select>
+      </div>
+      <div id="sa-link-result" style="display:none;background:rgba(0,0,0,.3);border-radius:.5rem;padding:.75rem;word-break:break-all;font-family:monospace;font-size:.8rem;color:#a5b4fc;margin-bottom:1rem"></div>
+      <div style="display:flex;gap:.75rem">
+        <button onclick="closeAdminModal()" style="flex:1;padding:.65rem;border-radius:.6rem;border:1px solid var(--border,#334155);background:transparent;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600">Cerrar</button>
+        <button onclick="execGenerateLink('${companyId}')" style="flex:2;padding:.65rem;border-radius:.6rem;border:none;background:var(--primary,#3b82f6);color:#fff;cursor:pointer;font-weight:700">🔗 Generar Link</button>
+      </div>
+    `);
   } catch (err) {
-    alert('Error generando link de activación: ' + err.message);
+    saToast('❌ Error cargando planes: ' + err.message, false);
   }
 };
 
-// --- Activar plan pendiente (usuario final) ---
-window.activatePendingPlan = async function(token) {
-  if (!confirm('¿Deseas activar tu nuevo plan ahora?')) return;
-  
+window.execGenerateLink = async function(companyId) {
+  const planId = document.getElementById('sa-plan-select')?.value;
+  if (!planId) return;
   try {
-    const resp = await fetch(`/api/activate/${token}`);
-    const data = await resp.json();
-    
+    const res = await apiRequest('/saas/companies/' + companyId + '/generate-activation', {
+      method: 'POST', body: JSON.stringify({ planId })
+    });
+    const linkDiv = document.getElementById('sa-link-result');
+    if (linkDiv) { linkDiv.textContent = res.link; linkDiv.style.display = 'block'; }
+    try { await navigator.clipboard.writeText(res.link); saToast('✅ Link copiado al portapapeles'); }
+    catch(e) { saToast('🔗 Link generado — cópialo manualmente'); }
+  } catch (err) {
+    saToast('❌ Error: ' + err.message, false);
+  }
+};
+
+// Alias para compatibilidad con el código antiguo
+window.generateActivationLink = window.showActivatePlanModal;
+window.toggleCompanyStatus = function(id, status, name) { window.showToggleStatusModal(id, status, name || id); };
+window.deleteCompany = function(id, name) { window.showDeleteCompanyModal(id, name || id); };
+
+window.activatePendingPlan = async function(token) {
+  if (!confirm('Deseas activar tu nuevo plan ahora?')) return;
+  try {
+    var resp = await fetch('/api/activate/' + token);
+    var data = await resp.json();
     if (resp.ok && data.success) {
-      // Mostrar mensaje de éxito
-      const modalHtml = `
-        <div id="plan-activated-modal" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);padding:1rem;">
-          <div style="background:var(--card-bg,#1e293b);border:1px solid rgba(34,197,94,0.4);border-radius:1rem;padding:2.5rem;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
-            <div style="width:70px;height:70px;margin:0 auto 1rem;background:rgba(34,197,94,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;">✅</div>
-            <h3 style="margin:0 0 0.5rem;font-size:1.35rem;">¡Plan Activado!</h3>
-            <p style="color:var(--text-muted,#94a3b8);margin:0 0 0.5rem;font-size:0.95rem;">${data.message}</p>
-            <p style="color:var(--text-muted,#94a3b8);margin:0 0 1.5rem;font-size:0.85rem;">Válido hasta: <strong style="color:#22c55e;">${data.validUntil}</strong></p>
-            <button onclick="document.getElementById('plan-activated-modal').remove();renderPlansSection();" 
-              class="btn btn-success" 
-              style="background:linear-gradient(135deg,#22c55e,#16a34a);padding:0.75rem 2rem;font-weight:600;border-radius:0.75rem;width:100%;">
-              ¡Entendido!
-            </button>
-          </div>
-        </div>
-      `;
-      document.body.insertAdjacentHTML('beforeend', modalHtml);
+      alert('Plan activado! Valido hasta: ' + (data.validUntil || ''));
+      renderPlansSection();
     } else {
       alert(data.error || 'Error al activar el plan.');
     }
   } catch (err) {
-    alert('Error de conexión al activar el plan: ' + err.message);
+    alert('Error de conexion: ' + err.message);
   }
 };
 
 // --- SAAS PLANS LOGIC ---
-let editingPlanId = null;
+var editingPlanId = null;
 
-window.openPlanModal = function(plan = null) {
-  const form = document.getElementById('saas-plan-form');
-  const title = document.getElementById('plan-modal-title');
+window.openPlanModal = function(plan) {
+  var form = document.getElementById('saas-plan-form');
+  var title = document.getElementById('plan-modal-title');
   if (plan) {
     editingPlanId = plan.id;
     title.textContent = 'Editar Plan SaaS';
@@ -2774,6 +3344,17 @@ window.openPlanModal = function(plan = null) {
     document.getElementById('plan-price').value = plan.price;
     document.getElementById('plan-max-loans').value = plan.max_loans;
     document.getElementById('plan-max-users').value = plan.max_users;
+    
+    // Checkboxes
+    document.getElementById('plan-allow-documents').checked = !!plan.allow_documents;
+    document.getElementById('plan-allow-guarantees').checked = !!plan.allow_guarantees;
+    document.getElementById('plan-allow-expenses').checked = !!plan.allow_expenses;
+    document.getElementById('plan-allow-banks').checked = !!plan.allow_banks;
+    document.getElementById('plan-allow-cash').checked = !!plan.allow_cash;
+    document.getElementById('plan-allow-denominations').checked = !!plan.allow_denominations;
+    document.getElementById('plan-allow-finances').checked = !!plan.allow_finances;
+    document.getElementById('plan-allow-whatsapp').checked = !!plan.allow_whatsapp;
+    document.getElementById('plan-allow-debugger').checked = !!plan.allow_debugger;
   } else {
     editingPlanId = null;
     form.reset();
@@ -2783,35 +3364,43 @@ window.openPlanModal = function(plan = null) {
   document.getElementById('modal-plan').classList.add('active');
 };
 
-document.getElementById('saas-plan-form')?.addEventListener('submit', async (e) => {
+document.getElementById('saas-plan-form')?.addEventListener('submit', async function(e) {
   e.preventDefault();
-  const id = document.getElementById('plan-id').value.trim().toLowerCase();
-  const name = document.getElementById('plan-name').value.trim();
-  const price = parseFloat(document.getElementById('plan-price').value);
-  const max_loans = parseInt(document.getElementById('plan-max-loans').value);
-  const max_users = parseInt(document.getElementById('plan-max-users').value);
+  var id = document.getElementById('plan-id').value.trim().toLowerCase();
+  var name = document.getElementById('plan-name').value.trim();
+  var price = parseFloat(document.getElementById('plan-price').value);
+  var max_loans = parseInt(document.getElementById('plan-max-loans').value);
+  var max_users = parseInt(document.getElementById('plan-max-users').value);
   
+  var payload = {
+    id: id, name: name, price: price, max_loans: max_loans, max_users: max_users,
+    allow_documents: document.getElementById('plan-allow-documents').checked ? 1 : 0,
+    allow_guarantees: document.getElementById('plan-allow-guarantees').checked ? 1 : 0,
+    allow_expenses: document.getElementById('plan-allow-expenses').checked ? 1 : 0,
+    allow_banks: document.getElementById('plan-allow-banks').checked ? 1 : 0,
+    allow_cash: document.getElementById('plan-allow-cash').checked ? 1 : 0,
+    allow_denominations: document.getElementById('plan-allow-denominations').checked ? 1 : 0,
+    allow_finances: document.getElementById('plan-allow-finances').checked ? 1 : 0,
+    allow_whatsapp: document.getElementById('plan-allow-whatsapp').checked ? 1 : 0,
+    allow_debugger: document.getElementById('plan-allow-debugger').checked ? 1 : 0
+  };
+
   try {
-    const method = editingPlanId ? 'PUT' : 'POST';
-    const url = editingPlanId ? '/saas/plans/' + editingPlanId : '/saas/plans';
-    
-    await apiRequest(url, {
-      method: method,
-      body: JSON.stringify({ id, name, price, max_loans, max_users })
-    });
-    
+    var method = editingPlanId ? 'PUT' : 'POST';
+    var url = editingPlanId ? '/saas/plans/' + editingPlanId : '/saas/plans';
+    await apiRequest(url, { method: method, body: JSON.stringify(payload) });
     closeModal('modal-plan');
-    loadSuperAdminDashboard();
+    renderSuperAdminSection();
   } catch (err) {
     alert('Error guardando plan: ' + err.message);
   }
 });
 
 window.deletePlan = async function(id) {
-  if (confirm('Est seguro de que desea eliminar este plan? Esto podra afectar a los inquilinos suscritos a l.')) {
+  if (confirm('Esta seguro de que desea eliminar este plan?')) {
     try {
       await apiRequest('/saas/plans/' + id, { method: 'DELETE' });
-      loadSuperAdminDashboard();
+      renderSuperAdminSection();
     } catch (err) {
       alert('Error eliminando plan: ' + err.message);
     }
@@ -2854,3 +3443,1080 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+// ═══════════════════════════════════════════════════
+// CERRAR APP & BOTÓN RETROCESO (MÓVIL)
+// ═══════════════════════════════════════════════════
+
+window.closeApp = function() {
+  if (confirm('¿Desea cerrar sesión y salir de la aplicación?')) {
+    localStorage.removeItem('prestamos_auth_token');
+    localStorage.removeItem('prestamos_is_superadmin');
+    
+    // Regresar a la pantalla inicial sin redirigir ni recargar la página
+    showLogin();
+  }
+};
+
+// Insertar un estado artificial para capturar el botón de retroceso del celular
+window.addEventListener('load', () => {
+  history.pushState({ appOpen: true }, null, location.href);
+});
+
+window.addEventListener('popstate', async (e) => {
+  // Si el usuario presionó Atrás en su celular
+  if (confirm('¿Desea cerrar sesión y volver al inicio?')) {
+    localStorage.removeItem('prestamos_auth_token');
+    localStorage.removeItem('prestamos_is_superadmin');
+    showLogin();
+  } else {
+    // Si cancela, volvemos a agregar el estado para atrapar el próximo click
+    history.pushState({ appOpen: true }, null, location.href);
+  }
+});
+
+// =========================================================
+// NUEVOS MÓDULOS (Garantías, Gastos, Bancos, Caja, Finanzas)
+// =========================================================
+
+// --- GARANTÍAS ---
+async function loadGuarantees() {
+  try {
+    const data = await apiRequest('/guarantees');
+    const tbody = document.getElementById('guarantees-table-body');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No hay garantías registradas.</td></tr>';
+      return;
+    }
+    data.forEach(g => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${formatDate(g.createdAt)}</td>
+          <td>${g.loanId}</td>
+          <td>${g.guarantorName}</td>
+          <td>${g.guarantorPhone || '-'}</td>
+          <td>${g.guarantorId || '-'}</td>
+          <td>${g.guarantorAddress || '-'}</td>
+          <td>
+            <button class="btn btn-sm btn-danger" onclick="deleteGuarantee('${g.id}')">Eliminar</button>
+          </td>
+        </tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function submitGuarantee() {
+  try {
+    const payload = {
+      loanId: document.getElementById('guar-loanId').value,
+      guarantorName: document.getElementById('guar-name').value,
+      guarantorPhone: document.getElementById('guar-phone').value,
+      guarantorId: document.getElementById('guar-id').value,
+      guarantorAddress: document.getElementById('guar-address').value,
+      notes: document.getElementById('guar-notes').value
+    };
+    await apiRequest('/guarantees', 'POST', payload);
+    closeModal('modal-guarantee-form');
+    document.getElementById('form-guarantee').reset();
+    loadGuarantees();
+    alert('Garantía registrada');
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteGuarantee(id) {
+  if(!confirm('¿Eliminar garantía?')) return;
+  try {
+    await apiRequest(`/guarantees/${id}`, 'DELETE');
+    loadGuarantees();
+  } catch(e) { alert(e.message); }
+}
+
+// --- GASTOS ---
+async function loadExpenses() {
+  try {
+    const data = await apiRequest('/expenses');
+    const tbody = document.getElementById('expenses-table-body');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay gastos registrados.</td></tr>';
+      return;
+    }
+    data.forEach(e => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${formatDate(e.date)}</td>
+          <td>${e.description}</td>
+          <td style="text-transform: capitalize;">${e.category}</td>
+          <td>$${e.amount.toFixed(2)}</td>
+          <td>
+            <button class="btn btn-sm btn-danger" onclick="deleteExpense('${e.id}')">Eliminar</button>
+          </td>
+        </tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function submitExpense() {
+  try {
+    const payload = {
+      description: document.getElementById('exp-description').value,
+      amount: document.getElementById('exp-amount').value,
+      category: document.getElementById('exp-category').value,
+      date: document.getElementById('exp-date').value,
+      notes: document.getElementById('exp-notes').value
+    };
+    await apiRequest('/expenses', 'POST', payload);
+    closeModal('modal-expense-form');
+    document.getElementById('form-expense').reset();
+    loadExpenses();
+    alert('Gasto registrado');
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteExpense(id) {
+  if(!confirm('¿Eliminar gasto?')) return;
+  try {
+    await apiRequest(`/expenses/${id}`, 'DELETE');
+    loadExpenses();
+  } catch(e) { alert(e.message); }
+}
+
+// --- BANCOS ---
+async function loadBanks() {
+  try {
+    const data = await apiRequest('/banks');
+    const grid = document.getElementById('banks-grid');
+    const select = document.getElementById('btx-account');
+    if(!grid || !select) return;
+    grid.innerHTML = '';
+    select.innerHTML = '';
+    if(data.length === 0) {
+      grid.innerHTML = '<p class="text-muted">No hay cuentas bancarias registradas.</p>';
+      return;
+    }
+    data.forEach(b => {
+      grid.innerHTML += `
+        <div class="card" style="border:1px solid var(--border);">
+          <div class="card-body">
+            <h4 style="margin:0 0 0.5rem 0;">${b.bankName} <span class="text-muted" style="font-size:0.8rem">(${b.accountType})</span></h4>
+            <div class="text-muted" style="font-size:0.9rem; margin-bottom: 1rem;">Nº ${b.accountNumber || 'N/A'}</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: ${b.balance >= 0 ? 'var(--success)' : 'var(--danger)'}">
+              $${b.balance.toFixed(2)}
+            </div>
+            <div style="text-align: right; margin-top: 1rem;">
+              <button class="btn btn-sm btn-danger" onclick="deleteBank('${b.id}')"><i data-lucide="trash-2"></i></button>
+            </div>
+          </div>
+        </div>`;
+      select.innerHTML += `<option value="${b.id}">${b.bankName} - ${b.accountNumber} ($${b.balance.toFixed(2)})</option>`;
+    });
+    if(window.lucide) lucide.createIcons();
+  } catch(e) { console.error(e); }
+}
+
+async function submitBank() {
+  try {
+    const payload = {
+      bankName: document.getElementById('bank-name').value,
+      accountNumber: document.getElementById('bank-number').value,
+      accountType: document.getElementById('bank-type').value,
+      balance: document.getElementById('bank-balance').value
+    };
+    await apiRequest('/banks', 'POST', payload);
+    closeModal('modal-bank-form');
+    document.getElementById('form-bank').reset();
+    loadBanks();
+    alert('Cuenta creada');
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteBank(id) {
+  if(!confirm('¿Eliminar esta cuenta bancaria?')) return;
+  try {
+    await apiRequest(`/banks/${id}`, 'DELETE');
+    loadBanks();
+  } catch(e) { alert(e.message); }
+}
+
+async function loadBankTransactions() {
+  try {
+    const data = await apiRequest('/bank-transactions');
+    const tbody = document.getElementById('bank-transactions-body');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay transacciones registradas.</td></tr>';
+      return;
+    }
+    data.forEach(t => {
+      const color = (t.type === 'deposito' || t.type === 'ingreso') ? 'var(--success)' : 'var(--danger)';
+      const sign = (t.type === 'deposito' || t.type === 'ingreso') ? '+' : '-';
+      tbody.innerHTML += `
+        <tr>
+          <td>${formatDate(t.date)}</td>
+          <td>${t.accountId}</td>
+          <td style="text-transform: capitalize;">${t.type}</td>
+          <td style="color: ${color}; font-weight: bold;">${sign}$${t.amount.toFixed(2)}</td>
+          <td>${t.description}</td>
+        </tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function submitBankTransaction() {
+  try {
+    const payload = {
+      accountId: document.getElementById('btx-account').value,
+      type: document.getElementById('btx-type').value,
+      amount: document.getElementById('btx-amount').value,
+      date: document.getElementById('btx-date').value,
+      description: document.getElementById('btx-description').value
+    };
+    await apiRequest('/bank-transactions', 'POST', payload);
+    closeModal('modal-bank-transaction');
+    document.getElementById('form-bank-transaction').reset();
+    loadBanks();
+    loadBankTransactions();
+    alert('Movimiento registrado');
+  } catch(e) { alert(e.message); }
+}
+
+// --- CAJA ---
+async function loadCashStatus() {
+  try {
+    const data = await apiRequest('/cash/current');
+    const banner = document.getElementById('cash-status-banner');
+    const btnOpen = document.getElementById('btn-open-cash');
+    const btnClose = document.getElementById('btn-close-cash');
+    if(!banner) return;
+    
+    if(data) {
+      banner.className = 'alert alert-success mb-4';
+      banner.innerHTML = `<strong>Caja Abierta</strong> - Abierta el ${formatDate(data.openedAt)} con saldo inicial de $${data.openingBalance.toFixed(2)}`;
+      btnOpen.disabled = true;
+      btnClose.disabled = false;
+    } else {
+      banner.className = 'alert alert-warning mb-4';
+      banner.innerHTML = `<strong>Caja Cerrada</strong> - Debe abrir caja para registrar movimientos en efectivo de hoy.`;
+      btnOpen.disabled = false;
+      btnClose.disabled = true;
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function submitOpenCash() {
+  try {
+    const payload = {
+      openingBalance: document.getElementById('cash-open-balance').value,
+      notes: document.getElementById('cash-open-notes').value
+    };
+    await apiRequest('/cash/open', 'POST', payload);
+    closeModal('modal-open-cash');
+    document.getElementById('form-open-cash').reset();
+    loadCashStatus();
+    loadCashHistory();
+    alert('Caja abierta');
+  } catch(e) { alert(e.message); }
+}
+
+async function submitCloseCash() {
+  try {
+    const payload = {
+      closingBalance: document.getElementById('cash-close-balance').value,
+      notes: document.getElementById('cash-close-notes').value
+    };
+    const res = await apiRequest('/cash/close', 'PUT', payload);
+    closeModal('modal-close-cash');
+    document.getElementById('form-close-cash').reset();
+    loadCashStatus();
+    loadCashHistory();
+    alert(`Caja cerrada. Saldo esperado: $${res.expected.toFixed(2)}. Diferencia: $${res.difference.toFixed(2)}`);
+  } catch(e) { alert(e.message); }
+}
+
+async function loadCashHistory() {
+  try {
+    const data = await apiRequest('/cash/history');
+    const tbody = document.getElementById('cash-history-body');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No hay historial de cajas.</td></tr>';
+      return;
+    }
+    data.forEach(c => {
+      const isClosed = c.status === 'closed';
+      tbody.innerHTML += `
+        <tr>
+          <td>${formatDate(c.openedAt)}</td>
+          <td>${isClosed ? formatDate(c.closedAt) : '-'}</td>
+          <td>$${c.openingBalance.toFixed(2)}</td>
+          <td>${isClosed ? '$'+c.closingBalance.toFixed(2) : '-'}</td>
+          <td style="color: ${c.difference < 0 ? 'var(--danger)' : (c.difference > 0 ? 'var(--success)' : 'inherit')}">
+            ${isClosed ? (c.difference > 0 ? '+' : '') + '$'+c.difference.toFixed(2) : '-'}
+          </td>
+          <td><span class="badge ${isClosed ? 'badge-danger' : 'badge-success'}">${isClosed ? 'Cerrada' : 'Abierta'}</span></td>
+        </tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+function calcDenominationsTotal() {
+  const d2000 = parseInt(document.getElementById('den-2000').value || 0);
+  const d1000 = parseInt(document.getElementById('den-1000').value || 0);
+  const d500 = parseInt(document.getElementById('den-500').value || 0);
+  const d200 = parseInt(document.getElementById('den-200').value || 0);
+  const d100 = parseInt(document.getElementById('den-100').value || 0);
+  const d50 = parseInt(document.getElementById('den-50').value || 0);
+  const d25 = parseInt(document.getElementById('den-25').value || 0);
+  const d10 = parseInt(document.getElementById('den-10').value || 0);
+  const d5 = parseInt(document.getElementById('den-5').value || 0);
+  const d1 = parseInt(document.getElementById('den-1').value || 0);
+
+  const total = (d2000*2000) + (d1000*1000) + (d500*500) + (d200*200) +
+                (d100*100) + (d50*50) + (d25*25) + (d10*10) + (d5*5) + (d1*1);
+  
+  document.getElementById('den-total-preview').textContent = `$${total.toFixed(2)}`;
+  return total;
+}
+
+async function submitDenominations() {
+  try {
+    const payload = {
+      d2000: parseInt(document.getElementById('den-2000').value || 0),
+      d1000: parseInt(document.getElementById('den-1000').value || 0),
+      d500: parseInt(document.getElementById('den-500').value || 0),
+      d200: parseInt(document.getElementById('den-200').value || 0),
+      d100: parseInt(document.getElementById('den-100').value || 0),
+      d50: parseInt(document.getElementById('den-50').value || 0),
+      d25: parseInt(document.getElementById('den-25').value || 0),
+      d10: parseInt(document.getElementById('den-10').value || 0),
+      d5: parseInt(document.getElementById('den-5').value || 0),
+      d1: parseInt(document.getElementById('den-1').value || 0),
+      sessionDate: new Date().toISOString().split('T')[0]
+    };
+    const res = await apiRequest('/denominations', 'POST', payload);
+    closeModal('modal-denominations');
+    document.getElementById('form-denominations').reset();
+    document.getElementById('den-total-preview').textContent = '$0.00';
+    loadDenominations();
+    alert(`Cuadre guardado exitosamente. Total contabilizado: $${res.total.toFixed(2)}`);
+  } catch(e) { alert(e.message); }
+}
+
+async function loadDenominations() {
+  try {
+    const data = await apiRequest('/denominations');
+    const tbody = document.getElementById('denominations-history');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">No hay cuadres registrados.</td></tr>';
+      return;
+    }
+    data.forEach(d => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${d.sessionDate}</td>
+          <td><strong>$${d.totalCash.toFixed(2)}</strong></td>
+          <td>${formatDate(d.createdAt)}</td>
+        </tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+
+// --- FINANZAS ---
+async function loadFinancesSummary() {
+  try {
+    const data = await apiRequest('/finances/summary');
+    
+    document.getElementById('fin-capital-lent').textContent = `$${data.capitalLent.toFixed(2)}`;
+    document.getElementById('fin-collected').textContent = `$${data.collected.toFixed(2)}`;
+    document.getElementById('fin-expenses').textContent = `$${data.totalExpenses.toFixed(2)}`;
+    
+    const profitEl = document.getElementById('fin-net-profit');
+    profitEl.textContent = `$${data.netProfit.toFixed(2)}`;
+    profitEl.style.color = data.netProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+    
+    const monthlyEl = document.getElementById('fin-monthly-profit');
+    monthlyEl.textContent = `$${data.monthlyProfit.toFixed(2)}`;
+    monthlyEl.style.color = data.monthlyProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+    
+    const expList = document.getElementById('fin-expenses-category');
+    expList.innerHTML = '';
+    if (data.expensesByCategory.length === 0) {
+      expList.innerHTML = '<li class="text-muted">No hay gastos registrados.</li>';
+    } else {
+      data.expensesByCategory.forEach(c => {
+        expList.innerHTML += `
+          <li style="display:flex; justify-content:space-between; margin-bottom:0.5rem; padding-bottom:0.5rem; border-bottom:1px solid var(--border)">
+          <li style="display:flex; justify-content:space-between; margin-bottom:0.5rem; padding-bottom:0.5rem; border-bottom:1px solid var(--border)">
+            <span style="text-transform:capitalize">${c.category}</span>
+            <strong>$${c.total.toFixed(2)}</strong>
+          </li>`;
+      });
+    }
+
+    // Renderizar Gráficos
+    renderFinancialCharts(data);
+    
+  } catch(e) { console.error(e); }
+}
+
+function renderFinancialCharts(data) {
+  if (typeof Chart === 'undefined') return;
+
+  // 1. Gráfico de Flujo de Caja (Ingresos vs Gastos)
+  const ctxCashflow = document.getElementById('chart-cashflow');
+  if (ctxCashflow) {
+    if (collectionsChartInstance) collectionsChartInstance.destroy();
+    
+    // Asumimos que data.cashflow viene del backend ordenado cronológicamente
+    const labels = data.cashflow.map(c => c.month);
+    const incomeData = data.cashflow.map(c => c.income);
+    const expenseData = data.cashflow.map(c => c.expense);
+    
+    collectionsChartInstance = new Chart(ctxCashflow, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Ingresos (Cobros)',
+            data: incomeData,
+            backgroundColor: 'rgba(34, 197, 94, 0.6)',
+            borderColor: 'rgb(34, 197, 94)',
+            borderWidth: 1,
+            borderRadius: 4
+          },
+          {
+            label: 'Gastos Operativos',
+            data: expenseData,
+            backgroundColor: 'rgba(239, 68, 68, 0.6)',
+            borderColor: 'rgb(239, 68, 68)',
+            borderWidth: 1,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' }
+        },
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // 2. Gráfico de Estado de Cartera (Préstamos)
+  const ctxPortfolio = document.getElementById('chart-portfolio');
+  if (ctxPortfolio) {
+    if (statusChartInstance) statusChartInstance.destroy();
+    
+    let active = 0;
+    let paid = 0;
+    let overdue = 0;
+    
+    state.loans.forEach(l => {
+      if (l.status === 'paid') paid++;
+      else if (l.status === 'overdue') overdue++;
+      else active++;
+    });
+    
+    statusChartInstance = new Chart(ctxPortfolio, {
+      type: 'doughnut',
+      data: {
+        labels: ['Activos', 'Pagados', 'Morosos'],
+        datasets: [{
+          data: [active, paid, overdue],
+          backgroundColor: [
+            'rgba(59, 130, 246, 0.7)',
+            'rgba(34, 197, 94, 0.7)',
+            'rgba(239, 68, 68, 0.7)'
+          ],
+          borderColor: [
+            'rgb(59, 130, 246)',
+            'rgb(34, 197, 94)',
+            'rgb(239, 68, 68)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  }
+}
+
+// =========================================================
+// MÓDULO DOCUMENTOS: GENERADOR DE CONTRATO EN PDF
+// =========================================================
+window.generateContractPDF = function(loanId) {
+  if (!hasFeature('allow_documents')) {
+    alert('Su plan actual no incluye la generación de documentos y contratos. Actualice su plan para acceder a esta función.');
+    return;
+  }
+
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('La librería PDF no está cargada. Actualiza la página e intenta de nuevo.');
+    return;
+  }
+
+  const loan = state.loans.find(l => l.id === loanId);
+  if (!loan) { alert('Préstamo no encontrado.'); return; }
+
+  const client = state.clients.find(c => c.id === loan.clientId);
+  const companyName = window.appSettings?.companyName || 'Prestamista';
+  const companyEmail = window.appSettings?.email || '';
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  let y = margin;
+
+  // --- ENCABEZADO ---
+  doc.setFillColor(30, 58, 138); // Azul corporativo
+  doc.rect(0, 0, pageW, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CONTRATO DE PRÉSTAMO DE DINERO', pageW / 2, 14, { align: 'center' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(companyName.toUpperCase(), pageW / 2, 22, { align: 'center' });
+
+  y = 40;
+  doc.setTextColor(30, 30, 30);
+
+  // --- NÚMERO DE CONTRATO ---
+  doc.setFillColor(243, 244, 246);
+  doc.roundedRect(margin, y - 4, pageW - margin * 2, 12, 2, 2, 'F');
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Contrato N°: ${loan.id}`, margin + 4, y + 4);
+  doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}`, pageW - margin - 4, y + 4, { align: 'right' });
+  y += 20;
+
+  // --- CLÁUSULA 1: PARTES CONTRATANTES ---
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 58, 138);
+  doc.text('CLÁUSULA I – PARTES CONTRATANTES', margin, y);
+  y += 6;
+  doc.setDrawColor(30, 58, 138);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
+  doc.setTextColor(30, 30, 30);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('PRESTAMISTA (Acreedor):', margin, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Nombre / Empresa: ${companyName}`, margin + 4, y); y += 4;
+  if (companyEmail) { doc.text(`Correo: ${companyEmail}`, margin + 4, y); y += 4; }
+  y += 3;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('PRESTATARIO (Deudor):', margin, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Nombre: ${client ? client.name : loan.clientName}`, margin + 4, y); y += 4;
+  if (client?.phone) { doc.text(`Teléfono: ${client.phone}`, margin + 4, y); y += 4; }
+  if (client?.email) { doc.text(`Correo: ${client.email}`, margin + 4, y); y += 4; }
+  y += 5;
+
+  // --- CLÁUSULA 2: TÉRMINOS DEL PRÉSTAMO ---
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 58, 138);
+  doc.text('CLÁUSULA II – TÉRMINOS DEL PRÉSTAMO', margin, y);
+  y += 6;
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
+  const freq = { daily: 'Diaria', weekly: 'Semanal', biweekly: 'Quincenal', monthly: 'Mensual' };
+  const tipoSistema = loan.type === 'french' ? 'Sistema Francés (Cuota Fija)' : loan.type === 'german' ? 'Sistema Alemán (Capital Fijo)' : 'Interés Simple';
+
+  const terminos = [
+    ['Monto Capital Prestado', formatCurrency(loan.amount)],
+    ['Tasa de Interés', `${loan.rate}% anual`],
+    ['Sistema de Amortización', tipoSistema],
+    ['Frecuencia de Pago', freq[loan.frequency] || loan.frequency],
+    ['Número de Cuotas', `${loan.term} cuotas`],
+    ['Fecha de Inicio', formatDateReadable(loan.startDate)],
+    ['Total Intereses', formatCurrency(loan.interestAmount)],
+    ['Total a Pagar', formatCurrency(loan.totalPayable)],
+  ];
+
+  doc.setTextColor(30, 30, 30);
+  terminos.forEach(([label, val]) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(label + ':', margin + 2, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(val, margin + 60, y);
+    y += 5;
+  });
+
+  y += 4;
+
+  // --- CLÁUSULA 3: MORA ---
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 58, 138);
+  doc.text('CLÁUSULA III – MORA Y PENALIDADES', margin, y);
+  y += 6;
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 30, 30);
+  const moraText = 'En caso de retraso en el pago de cualquier cuota, el PRESTATARIO incurrirá automáticamente en mora, ' +
+    'sin necesidad de requerimiento previo, desde el día siguiente al vencimiento de la cuota impaga. ' +
+    'Se aplicarán los cargos por mora y recargos establecidos por el PRESTAMISTA al momento del cobro.';
+  const splitMora = doc.splitTextToSize(moraText, pageW - margin * 2);
+  doc.text(splitMora, margin, y);
+  y += splitMora.length * 4 + 5;
+
+  // --- TABLA DE AMORTIZACIÓN ---
+  if (loan.instalments && loan.instalments.length > 0) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 58, 138);
+    doc.text('PLAN DE PAGOS (TABLA DE AMORTIZACIÓN)', margin, y);
+    y += 6;
+    doc.line(margin, y, pageW - margin, y);
+    y += 3;
+
+    const tableRows = loan.instalments.map(inst => [
+      inst.index,
+      formatDateReadable(inst.dueDate),
+      formatCurrency(inst.capitalPayment || 0),
+      formatCurrency(inst.interestPayment || 0),
+      formatCurrency(inst.amount),
+      inst.status === 'paid' ? '✓ Pagado' : 'Pendiente'
+    ]);
+
+    doc.autoTable({
+      startY: y,
+      head: [['#', 'Vencimiento', 'Capital', 'Interés', 'Cuota', 'Estado']],
+      body: tableRows,
+      theme: 'striped',
+      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7.5 },
+      margin: { left: margin, right: margin },
+      didDrawPage: (data) => { y = data.cursor.y; }
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+  }
+
+  // --- FIRMAS ---
+  if (y + 45 > pageH - margin) { doc.addPage(); y = margin + 10; }
+
+  doc.setTextColor(30, 30, 30);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  // Línea firma prestamista
+  doc.line(margin, y + 25, margin + 65, y + 25);
+  doc.text('Firma del Prestamista / Acreedor', margin, y + 30);
+  doc.setFont('helvetica', 'bold');
+  doc.text(companyName, margin, y + 35);
+
+  // Línea firma prestatario
+  const rightCol = pageW - margin - 65;
+  doc.setFont('helvetica', 'normal');
+  doc.line(rightCol, y + 25, rightCol + 65, y + 25);
+  doc.text('Firma del Prestatario / Deudor', rightCol, y + 30);
+  doc.setFont('helvetica', 'bold');
+  doc.text(client ? client.name : loan.clientName, rightCol, y + 35);
+
+  y += 48;
+
+  // --- PIE DE PÁGINA ---
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.5);
+  doc.setTextColor(150, 150, 150);
+  doc.text(`Documento generado el ${new Date().toLocaleString('es-ES')} por ${companyName}. Contrato N° ${loan.id}.`, pageW / 2, pageH - 8, { align: 'center' });
+
+  // --- GUARDAR ---
+  const filename = `contrato_prestamo_${loan.id.substring(0, 8)}.pdf`;
+  const pdfData = doc.output('datauristring');
+  
+  // Intentar compartir en móvil / descargar en desktop
+  try {
+    const base64 = pdfData.split(',')[1];
+    if (typeof shareFileApp === 'function') {
+      shareFileApp(base64, filename, 'Contrato de Préstamo PDF');
+    } else {
+      doc.save(filename);
+    }
+  } catch(e) {
+    doc.save(filename);
+  }
+};
+
+// =========================================================
+// MÓDULO DEPURADOR DE BASE DE DATOS
+// =========================================================
+let debugCurrentData = []; // Datos crudos actuales en el depurador
+
+function loadDebuggerSection() {
+  if (!hasFeature('allow_debugger')) {
+    const wrapper = document.getElementById('debug-results-wrapper');
+    if (wrapper) wrapper.innerHTML = `
+      <div class="text-center text-muted" style="padding:3rem;">
+        <i data-lucide="lock" style="width:40px; height:40px; margin-bottom:1rem; opacity:0.5;"></i>
+        <p style="font-size:1rem; font-weight:600;">Acceso restringido</p>
+        <p>Su plan actual no incluye el Depurador de Base de Datos.</p>
+      </div>`;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+  // Resetear estado
+  debugCurrentData = [];
+  document.getElementById('debug-sql-input').value = '';
+  document.getElementById('debug-table-select').value = '';
+  document.getElementById('debug-search').value = '';
+  debugShowPlaceholder();
+}
+
+function debugShowPlaceholder() {
+  document.getElementById('debug-placeholder').style.display = 'block';
+  document.getElementById('debug-results-table').style.display = 'none';
+  document.getElementById('debug-status-bar').style.display = 'none';
+  if (window.lucide) lucide.createIcons();
+}
+
+function debugShowStatus(msg, type = 'info') {
+  const bar = document.getElementById('debug-status-bar');
+  const colors = {
+    info: { bg: 'rgba(59,130,246,0.1)', border: '#3b82f6', text: '#3b82f6' },
+    success: { bg: 'rgba(34,197,94,0.1)', border: '#22c55e', text: '#22c55e' },
+    error: { bg: 'rgba(239,68,68,0.1)', border: '#ef4444', text: '#ef4444' }
+  };
+  const c = colors[type] || colors.info;
+  bar.style.display = 'block';
+  bar.style.background = c.bg;
+  bar.style.border = `1px solid ${c.border}`;
+  bar.style.color = c.text;
+  bar.textContent = msg;
+}
+
+function debugRenderTable(rows) {
+  if (!rows || rows.length === 0) {
+    debugShowStatus('✓ Consulta exitosa — 0 registros encontrados.', 'info');
+    document.getElementById('debug-results-table').style.display = 'none';
+    document.getElementById('debug-placeholder').innerHTML = `
+      <i data-lucide="search-x" style="width:36px; height:36px; margin-bottom:0.75rem; opacity:0.4;"></i>
+      <p>No se encontraron registros con esta consulta.</p>`;
+    document.getElementById('debug-placeholder').style.display = 'block';
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  const cols = Object.keys(rows[0]);
+  const thead = document.getElementById('debug-thead');
+  const tbody = document.getElementById('debug-tbody');
+
+  thead.innerHTML = '<tr>' + cols.map(c => `<th style="white-space:nowrap; font-size:0.78rem; background:rgba(124,58,237,0.1); color:#7c3aed;">${c}</th>`).join('') + '</tr>';
+  
+  tbody.innerHTML = '';
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = cols.map(c => {
+      const val = row[c];
+      let display = val === null ? '<span style="color:var(--text-muted);font-style:italic;">null</span>' : String(val);
+      if (typeof val === 'string' && val.length > 80) display = val.substring(0, 80) + '…';
+      return `<td style="font-size:0.8rem; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${String(val || '')}">${display}</td>`;
+    }).join('');
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('debug-placeholder').style.display = 'none';
+  document.getElementById('debug-results-table').style.display = 'table';
+  debugShowStatus(`✓ ${rows.length} registro(s) encontrado(s). Máximo 500 por consulta.`, 'success');
+  debugCurrentData = rows;
+}
+
+window.debugLoadTable = async function(table) {
+  if (!table) { debugShowPlaceholder(); return; }
+  if (!hasFeature('allow_debugger')) return;
+  
+  debugShowStatus('⏳ Cargando tabla...', 'info');
+  document.getElementById('debug-sql-input').value = `SELECT * FROM ${table} LIMIT 100`;
+
+  try {
+    const data = await apiRequest(`/debugger/table/${table}`);
+    debugRenderTable(data);
+  } catch(e) {
+    debugShowStatus('✗ Error: ' + e.message, 'error');
+  }
+};
+
+window.debugRunQuery = async function() {
+  if (!hasFeature('allow_debugger')) return;
+  const sql = document.getElementById('debug-sql-input').value.trim();
+  if (!sql) { alert('Escribe una consulta SQL para ejecutar.'); return; }
+
+  debugShowStatus('⏳ Ejecutando consulta...', 'info');
+  try {
+    const data = await apiRequest('/debugger/query', 'POST', { sql });
+    debugRenderTable(data);
+  } catch(e) {
+    debugShowStatus('✗ Error SQL: ' + e.message, 'error');
+  }
+};
+
+window.debugFilterResults = function() {
+  const q = document.getElementById('debug-search').value.toLowerCase();
+  if (!debugCurrentData.length) return;
+
+  const filtered = q
+    ? debugCurrentData.filter(row => Object.values(row).some(v => String(v || '').toLowerCase().includes(q)))
+    : debugCurrentData;
+
+  const tbody = document.getElementById('debug-tbody');
+  const cols = Object.keys(debugCurrentData[0]);
+  tbody.innerHTML = '';
+  filtered.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = cols.map(c => {
+      const val = row[c];
+      let display = val === null ? '<span style="color:var(--text-muted);font-style:italic;">null</span>' : String(val);
+      if (typeof val === 'string' && val.length > 80) display = val.substring(0, 80) + '…';
+      return `<td style="font-size:0.8rem; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${String(val || '')}">${display}</td>`;
+    }).join('');
+    tbody.appendChild(tr);
+  });
+  debugShowStatus(`✓ Mostrando ${filtered.length} de ${debugCurrentData.length} registro(s).`, filtered.length < debugCurrentData.length ? 'info' : 'success');
+};
+
+window.debugExportJSON = function() {
+  if (!debugCurrentData.length) { alert('No hay datos para exportar. Ejecuta una consulta primero.'); return; }
+  const json = JSON.stringify(debugCurrentData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `debug_export_${new Date().toISOString().split('T')[0]}.json`;
+  a.click(); URL.revokeObjectURL(url);
+};
+
+window.debugExportCSV = function() {
+  if (!debugCurrentData.length) { alert('No hay datos para exportar. Ejecuta una consulta primero.'); return; }
+  const cols = Object.keys(debugCurrentData[0]);
+  const rows = [cols.join(',')];
+  debugCurrentData.forEach(row => {
+    rows.push(cols.map(c => `"${String(row[c] ?? '').replace(/"/g, '""')}"`).join(','));
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `debug_export_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+};
+
+// =========================================================
+// MÓDULO KYC – VISOR DE IMÁGENES EN PANTALLA COMPLETA
+// =========================================================
+window.viewKycImageFullscreen = function(src, title) {
+  if (!src) return;
+  
+  // Crear overlay de pantalla completa
+  const overlay = document.createElement('div');
+  overlay.id = 'kyc-fullscreen-overlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 99999;
+    background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; cursor: zoom-out;
+    animation: fadeIn 0.2s ease;
+  `;
+  
+  const header = document.createElement('div');
+  header.style.cssText = 'position:absolute; top:0; left:0; right:0; padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.5);';
+  header.innerHTML = `
+    <span style="color:#fff; font-weight:600; font-size:1rem;">${title}</span>
+    <button onclick="document.getElementById('kyc-fullscreen-overlay').remove()" 
+      style="background:rgba(255,255,255,0.15); border:none; color:#fff; border-radius:50%; width:36px; height:36px; cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center;">✕</button>
+  `;
+  
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = title;
+  img.style.cssText = 'max-width:90vw; max-height:85vh; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.5); object-fit:contain;';
+  
+  overlay.appendChild(header);
+  overlay.appendChild(img);
+  
+  // Cerrar al hacer clic fuera de la imagen
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  
+  // Cerrar con Escape
+  const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+  document.addEventListener('keydown', escHandler);
+  
+  document.body.appendChild(overlay);
+};
+
+// =========================================================
+// INVITAR USUARIO POR EMAIL
+// =========================================================
+const inviteUserForm = document.getElementById('invite-user-form');
+if (inviteUserForm) {
+  inviteUserForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const emailInput = document.getElementById('invite-user-email');
+    const msgEl = document.getElementById('invite-user-msg');
+    const submitBtn = inviteUserForm.querySelector('button[type="submit"]');
+    
+    msgEl.textContent = 'Enviando invitación...';
+    msgEl.style.color = 'var(--text-muted)';
+    submitBtn.disabled = true;
+    
+    try {
+      const res = await apiRequest('/users/invite', 'POST', {
+        email: emailInput.value
+      });
+      
+      msgEl.textContent = res.message;
+      msgEl.style.color = 'var(--success)';
+      emailInput.value = '';
+      
+      if (res.link) {
+        msgEl.innerHTML = `Invitación generada. <a href="${res.link}" target="_blank" style="color:var(--primary);text-decoration:underline;">Abrir Link de Prueba</a>`;
+      }
+      
+    } catch (err) {
+      msgEl.textContent = err.message || 'Error al enviar invitación.';
+      msgEl.style.color = 'var(--danger)';
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+// =========================================================
+// NOTIFICACIONES DE MORA
+// =========================================================
+async function triggerOverdueCron() {
+  const btn = document.getElementById('btn-trigger-cron');
+  const msgEl = document.getElementById('cron-msg');
+  if (!btn || !msgEl) return;
+  
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = 'Ejecutando...';
+  btn.disabled = true;
+  msgEl.textContent = '';
+  
+  try {
+    const res = await apiRequest('/cron/overdue', 'POST');
+    msgEl.textContent = res.message;
+    msgEl.style.color = 'var(--success)';
+  } catch (err) {
+    msgEl.textContent = err.message || 'Error al ejecutar cron';
+    msgEl.style.color = 'var(--danger)';
+  } finally {
+    btn.innerHTML = originalHtml;
+// =========================================================
+// WHATSAPP API
+// =========================================================
+let waInterval = null;
+
+async function checkWhatsAppStatus() {
+  const badge = document.getElementById('wa-status-badge');
+  const qrContainer = document.getElementById('wa-qr-container');
+  const qrImage = document.getElementById('wa-qr-image');
+  const readyContainer = document.getElementById('wa-ready-container');
+  
+  if (!badge) return;
+
+  try {
+    const res = await apiRequest('/whatsapp/status');
+    
+    if (res.ready) {
+      badge.textContent = 'Conectado';
+      badge.style.color = 'var(--success)';
+      badge.style.borderColor = 'var(--success)';
+      qrContainer.style.display = 'none';
+      readyContainer.style.display = 'block';
+      if (waInterval) clearInterval(waInterval);
+    } else {
+      readyContainer.style.display = 'none';
+      if (res.qrUrl) {
+        badge.textContent = 'Escanea el QR';
+        badge.style.color = 'var(--primary)';
+        badge.style.borderColor = 'var(--primary)';
+        qrImage.src = res.qrUrl;
+        qrContainer.style.display = 'block';
+      } else {
+        badge.textContent = 'Generando QR...';
+        badge.style.color = 'var(--text-muted)';
+        badge.style.borderColor = 'var(--border)';
+        qrContainer.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.error('Error verificando WhatsApp:', err);
+    badge.textContent = 'Error de conexión';
+    badge.style.color = 'var(--danger)';
+    badge.style.borderColor = 'var(--danger)';
+  }
+}
+
+// Interceptar cambios de sección para empezar/detener polling de WA
+const originalSwitchSection = switchSection;
+window.switchSection = function(sectionId) {
+  originalSwitchSection(sectionId);
+  if (sectionId === 'sec-settings') {
+    checkWhatsAppStatus();
+    if (waInterval) clearInterval(waInterval);
+    waInterval = setInterval(checkWhatsAppStatus, 5000);
+  } else {
+    if (waInterval) {
+      clearInterval(waInterval);
+      waInterval = null;
+    }
+  }
+};
+
+async function sendWhatsAppToClient() {
+  if (!currentClient || !currentClient.phone) {
+    alert('El cliente no tiene un número de teléfono válido registrado.');
+    return;
+  }
+  
+  const message = prompt(`Escribe el mensaje de WhatsApp para ${currentClient.name}:`, `Hola ${currentClient.name}, nos comunicamos de PrestamosApp...`);
+  
+  if (!message) return; // Cancelado
+  
+  try {
+    const res = await apiRequest('/whatsapp/send', 'POST', {
+      phone: currentClient.phone,
+      message: message
+    });
+    alert('✅ ' + res.message);
+  } catch (err) {
+    alert('❌ Error: ' + err.message);
+  }
+}
